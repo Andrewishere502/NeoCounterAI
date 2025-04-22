@@ -89,7 +89,7 @@ label_frequencies = get_frequencies(img_labels)
 label_weights = {}
 max_freq = max(label_frequencies.values())
 for label, freq in label_frequencies.items():
-    label_weights[label] = max_freq / freq
+    label_weights[label] = min(max_freq / freq, 50)
 
 # Print out the weights for each label
 for label, weight in label_weights.items():
@@ -149,7 +149,7 @@ model.compile(
 # Train the model
 resnet_prep = tf.keras.applications.resnet.preprocess_input
 csv_logger = tf.keras.callbacks.CSVLogger('training.log')
-early_stop = tf.keras.callbacks.EarlyStopping(min_delta=0.025, patience=2)  # After 2 epochs of <0.025 change, stop
+early_stop = tf.keras.callbacks.EarlyStopping(min_delta=0.001, patience=2)  # After 2 epochs of <0.001 change, stop
 history = model.fit(
     resnet_prep(X_train),
     y_train,
@@ -173,8 +173,17 @@ for i, img_array in enumerate(X_valid[:NROWS*NCOLS]):
     axs[i//5][i%5].axis('off')
 plt.show()
 
-
-# Create histogram for y_valid and y_valid_pred
-# plt.hist(y_valid)
-plt.hist(y_valid_pred)
+# Create histograms to compare validation dataset true labels with
+# the model's predictions
+fig, axs = plt.subplots(nrows=1, ncols=2)
+# Create y_valid histogram
+axs[0].hist(y_valid)
+axs[0].set_xlabel('Label Value')
+axs[0].set_ylabel('Frequency')
+axs[0].set_title(f'Distribution of True Labels for Validation Data')
+# Create y_valid_pred histogram
+axs[1].hist(y_valid_pred)
+axs[1].set_xlabel('Label Value')
+axs[1].set_ylabel('Frequency')
+axs[1].set_title(f'Distribution of Predicted Labels for Validation Data')
 plt.show()
