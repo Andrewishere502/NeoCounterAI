@@ -1,9 +1,71 @@
 import pathlib
+from typing import Tuple, Dict, Any, List
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
+
+
+def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+    '''Return an array of each image as a 2D array of pixels, and an
+    array of labels corresponding to each image.
+    '''
+    # Load in the image arrays and the number of shrimp in them
+    img_arrays = []
+    img_labels = []
+    for row in meta_df.itertuples():
+        # First element in row is the index, so zip with columns
+        # starting from the first element.
+        index = row[0]
+        labeled_row = dict(zip(meta_df.columns, row[1:]))
+
+        # Construct the path to where
+        img_path = pathlib.Path(labeled_row['NewDir'],
+                                labeled_row['NewName'])
+
+        # load in the image
+        img_array = plt.imread(img_path)
+        
+        # Add the image array and its label to
+        # their respective lists
+        img_arrays.append(img_array)
+        img_labels.append(labeled_row['NShrimp'])
+        
+        # Display progress bar
+        print(f'\r{len(img_arrays)} of {len(meta_df)} loaded', end='')
+    print()
+
+    # Convert img_arrays and img_labels from lists to arrays
+    img_arrays = np.array(img_arrays)
+    img_labels = np.array(img_labels)
+    return (img_arrays, img_labels)
+
+
+def get_frequencies(array: np.ndarray[Any]) -> Dict[Any, np.float32]:
+    '''Return the frequency of all unique values within an array as a
+    dict, where the key is the unique value and the value (paired with
+    the key) is the frequency of that unique value.
+    
+    Arguments:
+    array -- An array of values
+    '''
+    freqs = {}
+    for unique_value in np.unique(array):
+        print(f'{unique_value} {freqs.get(unique_value)}')
+        # Add this unique value to the dataframe
+        freqs[unique_value] = np.sum(array == unique_value)
+    return freqs
+
+
+def get_metrics() -> List[tf.keras.Metric]:
+    '''Return a list of Metric objects.'''
+    metrics = [
+        tf.keras.metrics.MeanSquaredError(),
+        tf.keras.metrics.RootMeanSquaredError(),
+        tf.keras.metrics.MeanAbsoluteError()
+    ]
+    return metrics
 
 
 # Set random seeds for numpy, python, and keras backend
@@ -16,45 +78,21 @@ meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
 # meta_df = meta_df[meta_df['Glare'] == 0]
 
-# Load in the image arrays and the number of shrimp in them
-img_arrays = []
-img_labels = []
-for row in meta_df.itertuples():
-    # First element in row is the index, so zip with columns
-    # starting from the first element.
-    index = row[0]
-    labeled_row = dict(zip(meta_df.columns, row[1:]))
 
-    # Construct the path to where
-    img_path = pathlib.Path(labeled_row['NewDir'],
-                            labeled_row['NewName'])
+# Load the image data
+img_arrays, img_labels = get_img_data(meta_df)
 
-    # load in the image
-    img_array = plt.imread(img_path)
-    
-    # Add the image array and its label to
-    # their respective lists
-    img_arrays.append(img_array)
-    img_labels.append(labeled_row['NShrimp'])
-    
-    # Display progress bar
-    print(f'\r{len(img_arrays)} of {len(meta_df)} loaded', end='')
-print()
+# Get frequencies for each label
+label_frequencies = get_frequencies(img_labels)
 
-# Convert img_arrays and img_labels from lists to arrays
-img_arrays = np.array(img_arrays)
-img_labels = np.array(img_labels)
-
-# Calculate frequencies for each label
-label_frequencies = {label: np.sum(img_labels == label) for label in np.unique(img_labels)}
 # Weight less frequent labels as more important
-class_weight = {}
-max_frequency = max(label_frequencies.values())
-for label in np.unique(img_labels):
-    # Cap weight so some aren't over-weighted
-    class_weight[label] = max_frequency / label_frequencies[label]
-    # class_weight[label] = min(max_frequency / label_frequencies[label], 40)
-for label, weight in class_weight.items():
+label_weights = {}
+max_freq = max(label_frequencies.values())
+for label, freq in label_frequencies.items():
+    label_weights[label] = max_freq / freq
+
+# Print out the weights for each label
+for label, weight in label_weights.items():
     print(f'{label}: {weight:.2f}x')
 
 
@@ -87,11 +125,11 @@ model.summary()
 
 # Add dense layers on top to learn how to interpret
 # the output of the convolutional layers
-model.add(tf.keras.layers.Dense(units=128,  # Number of neurons
-                                activation='tanh',
-                                kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
-                                bias_initializer='zeros'
-                                ))
+# model.add(tf.keras.layers.Dense(units=128,  # Number of neurons
+#                                 activation='tanh',
+#                                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
+#                                 bias_initializer='zeros'
+#                                 ))
 model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
                                 activation='relu',
                                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
@@ -102,11 +140,7 @@ model.summary()
 
 
 # Compile the model so it's ready for training
-metrics = [
-    tf.keras.metrics.MeanSquaredError(),
-    tf.keras.metrics.RootMeanSquaredError(),
-    tf.keras.metrics.MeanAbsoluteError()
-]
+metrics = get_metrics()
 model.compile(
     optimizer='adam',
     loss=tf.keras.losses.MeanSquaredError(),
@@ -118,16 +152,16 @@ csv_logger = tf.keras.callbacks.CSVLogger('training.log')
 early_stop = tf.keras.callbacks.EarlyStopping(min_delta=0.025, patience=2)  # After 2 epochs of <0.025 change, stop
 history = model.fit(
     resnet_prep(X_train),
-    resnet_prep(y_train),
-    validation_data=(resnet_prep(X_valid), resnet_prep(y_valid)),
-    class_weight=class_weight,
-    epochs=25,
+    y_train,
+    validation_data=(resnet_prep(X_valid), y_valid),
+    class_weight=label_weights,
+    epochs=10,
     callbacks=[csv_logger, early_stop]
     )
 # print(history.history)
 
 # Let the model predict off of X_valid
-y_valid_pred = model.predict(X_valid)
+y_valid_pred = model.predict(resnet_prep(X_valid))
 
 # Print some images and their predicted number of shrimp
 NROWS = 3
@@ -140,26 +174,7 @@ for i, img_array in enumerate(X_valid[:NROWS*NCOLS]):
 plt.show()
 
 
-# # Print some images where the predicted number of shrimp was
-# # NOT 3 or 4
-# fig, axs = plt.subplots(nrows=NROWS, ncols=NCOLS)
-# ax_i = 0
-# for img_i, img_array in enumerate(X_valid):
-#     if int(y_valid_pred[img_i][0]) < 3 or int(y_valid_pred[img_i][0]) > 4:
-#         axs[ax_i//5][ax_i%5].imshow(X_valid[img_i])
-#         axs[ax_i//5][ax_i%5].set_title(f'{y_valid_pred[img_i][0]:.0f} | {y_valid[img_i]:.0f}')
-#         axs[ax_i//5][ax_i%5].axis('off')
-#         ax_i += 1
-#         if ax_i == NROWS * NCOLS:
-#             break
-# # Only show the figure if axes have been filled
-# if ax_i != 0:
-#     plt.show()
-# else:
-#     plt.cla()
-#     plt.clf()
-
-# print('Number of predictions less than 3 or over 4:')
-# print('N: ', sum(np.logical_or(y_valid_pred < 3, y_valid_pred > 4)))
-# print('Predictions:')
-# print('', y_valid_pred[np.logical_or(y_valid_pred < 3, y_valid_pred > 4)])
+# Create histogram for y_valid and y_valid_pred
+# plt.hist(y_valid)
+plt.hist(y_valid_pred)
+plt.show()
