@@ -155,7 +155,7 @@ history = model.fit(
     y_train,
     validation_data=(resnet_prep(X_valid), y_valid),
     class_weight=label_weights,
-    epochs=10,
+    epochs=25,
     callbacks=[csv_logger, early_stop]
     )
 # print(history.history)
