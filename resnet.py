@@ -6,6 +6,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
+# Set random seeds for numpy, python, and keras backend
+tf.keras.utils.set_random_seed(2)
+
 
 def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     '''Return an array of each image as a 2D array of pixels, and an
@@ -52,10 +55,30 @@ def get_frequencies(array: np.ndarray[Any]) -> Dict[Any, np.float32]:
     '''
     freqs = {}
     for unique_value in np.unique(array):
-        print(f'{unique_value} {freqs.get(unique_value)}')
         # Add this unique value to the dataframe
         freqs[unique_value] = np.sum(array == unique_value)
     return freqs
+
+
+def get_weights(array: np.ndarray[Any], max_weight: float=None) -> Dict[Any, np.float32]:
+    '''Return weights for all unique values within an array as a
+    dict, where the key is the unique value and the value (paired with
+    the key) is the frequency of that unique value divided by the max
+    frequency for any unique value.
+    
+    Arguments:
+    array -- An array of values
+    '''
+    weights = {}
+    freqs = get_frequencies(array)
+    max_freq = max(freqs.values())
+    for value, freq in freqs.items():
+        # Potentially put an upper limit on the weight for a class
+        if max_weight == None:
+            weights[value] = max_freq / freq
+        else:
+            weights[value] = min(max_freq / freq, max_weight)
+    return weights
 
 
 def get_metrics() -> List[tf.keras.Metric]:
@@ -68,29 +91,17 @@ def get_metrics() -> List[tf.keras.Metric]:
     return metrics
 
 
-# Set random seeds for numpy, python, and keras backend
-tf.keras.utils.set_random_seed(2)
-
-
 # Path to data
 data_dir = pathlib.Path('DataNoSubstrate')
 meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
 # meta_df = meta_df[meta_df['Glare'] == 0]
 
-
 # Load the image data
 img_arrays, img_labels = get_img_data(meta_df)
 
-# Get frequencies for each label
-label_frequencies = get_frequencies(img_labels)
-
 # Weight less frequent labels as more important
-label_weights = {}
-max_freq = max(label_frequencies.values())
-for label, freq in label_frequencies.items():
-    label_weights[label] = min(max_freq / freq, 50)
-
+label_weights = get_weights(img_labels)
 # Print out the weights for each label
 for label, weight in label_weights.items():
     print(f'{label}: {weight:.2f}x')
@@ -166,7 +177,7 @@ y_valid_pred = model.predict(resnet_prep(X_valid))
 # Print some images and their predicted number of shrimp
 NROWS = 3
 NCOLS = 5
-fig, axs = plt.subplots(nrows=NROWS, ncols=NCOLS)
+fig, axs = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=(8, 6))
 for i, img_array in enumerate(X_valid[:NROWS*NCOLS]):
     axs[i//5][i%5].imshow(X_valid[i])
     axs[i//5][i%5].set_title(f'{y_valid_pred[i][0]:.0f} | {y_valid[i]:.0f}')
