@@ -154,7 +154,7 @@ model.summary()
 metrics = get_metrics()
 model.compile(
     optimizer='adam',
-    loss=tf.keras.losses.MeanSquaredError(),
+    loss=tf.keras.losses.MeanSquaredError(reduction='mean_with_sample_weight'),
     metrics=metrics
 )
 # Train the model
