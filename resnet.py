@@ -1,5 +1,5 @@
 import pathlib
-from typing import Tuple
+from typing import Tuple, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -42,6 +42,22 @@ def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     return (img_arrays, img_labels)
 
 
+def get_frequencies(array: np.ndarray[Any]) -> Dict[Any, np.float32]:
+    '''Return the frequency of all unique values within an array as a
+    dict, where the key is the unique value and the value (paired with
+    the key) is the frequency of that unique value.
+    
+    Arguments:
+    array -- An array of values
+    '''
+    freqs = {}
+    for unique_value in np.unique(array):
+        print(f'{unique_value} {freqs.get(unique_value)}')
+        # Add this unique value to the dataframe
+        freqs[unique_value] = np.sum(array == unique_value)
+    return freqs
+
+
 # Set random seeds for numpy, python, and keras backend
 tf.keras.utils.set_random_seed(2)
 
@@ -56,17 +72,17 @@ meta_df = pd.read_csv(meta_file, index_col='ID')
 # Load the image data
 img_arrays, img_labels = get_img_data(meta_df)
 
+# Get frequencies for each label
+label_frequencies = get_frequencies(img_labels)
 
-# Calculate frequencies for each label
-label_frequencies = {label: np.sum(img_labels == label) for label in np.unique(img_labels)}
 # Weight less frequent labels as more important
-class_weight = {}
-max_frequency = max(label_frequencies.values())
-for label in np.unique(img_labels):
-    # Cap weight so some aren't over-weighted
-    class_weight[label] = max_frequency / label_frequencies[label]
-    # class_weight[label] = min(max_frequency / label_frequencies[label], 40)
-for label, weight in class_weight.items():
+label_weights = {}
+max_freq = max(label_frequencies.values())
+for label, freq in label_frequencies.items():
+    label_weights[label] = max_freq / freq
+
+# Print out the weights for each label
+for label, weight in label_weights.items():
     print(f'{label}: {weight:.2f}x')
 
 
@@ -99,11 +115,11 @@ model.summary()
 
 # Add dense layers on top to learn how to interpret
 # the output of the convolutional layers
-model.add(tf.keras.layers.Dense(units=128,  # Number of neurons
-                                activation='tanh',
-                                kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
-                                bias_initializer='zeros'
-                                ))
+# model.add(tf.keras.layers.Dense(units=128,  # Number of neurons
+#                                 activation='tanh',
+#                                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
+#                                 bias_initializer='zeros'
+#                                 ))
 model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
                                 activation='relu',
                                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
@@ -132,14 +148,15 @@ history = model.fit(
     resnet_prep(X_train),
     resnet_prep(y_train),
     validation_data=(resnet_prep(X_valid), resnet_prep(y_valid)),
-    class_weight=class_weight,
-    epochs=25,
+    class_weight=label_weights,
+    epochs=1,
     callbacks=[csv_logger, early_stop]
     )
 # print(history.history)
 
 # Let the model predict off of X_valid
 y_valid_pred = model.predict(X_valid)
+print(len(y_valid_pred), len(X_valid))
 
 # Print some images and their predicted number of shrimp
 NROWS = 3
@@ -149,6 +166,12 @@ for i, img_array in enumerate(X_valid[:NROWS*NCOLS]):
     axs[i//5][i%5].imshow(X_valid[i])
     axs[i//5][i%5].set_title(f'{y_valid_pred[i][0]:.0f} | {y_valid[i]:.0f}')
     axs[i//5][i%5].axis('off')
+plt.show()
+
+
+# Create histogram for y_valid and y_valid_pred
+plt.hist(y_valid)
+plt.hist(y_valid_pred)
 plt.show()
 
 
