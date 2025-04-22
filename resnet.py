@@ -41,7 +41,7 @@ def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
 
     # Convert img_arrays and img_labels from lists to arrays
     img_arrays = np.array(img_arrays)
-    img_labels = np.array(img_labels)
+    img_labels = np.array(img_labels, dtype=int)
     return (img_arrays, img_labels)
 
 
@@ -85,8 +85,8 @@ def get_metrics() -> List[tf.keras.Metric]:
     '''Return a list of Metric objects.'''
     metrics = [
         tf.keras.metrics.MeanSquaredError(),
-        tf.keras.metrics.RootMeanSquaredError(),
-        tf.keras.metrics.MeanAbsoluteError()
+        # tf.keras.metrics.RootMeanSquaredError(),
+        # tf.keras.metrics.MeanAbsoluteError(),
     ]
     return metrics
 
@@ -113,11 +113,12 @@ np.random.shuffle(img_indices)
 index_partitions = np.split(img_indices, [int(0.7 * len(img_indices)),  # 0-70% for training
                                           int(0.9 * len(img_indices)),  # 70-90% for validation
                                           ])  # 90-100% for testing
-X_train, X_valid, X_valid = img_arrays[index_partitions[0]], img_arrays[index_partitions[1]], img_arrays[index_partitions[2]]
-y_train, y_valid, y_valid = img_labels[index_partitions[0]], img_labels[index_partitions[1]], img_labels[index_partitions[2]]
+X_train, X_valid, X_test = img_arrays[index_partitions[0]], img_arrays[index_partitions[1]], img_arrays[index_partitions[2]]
+y_train, y_valid, y_test = img_labels[index_partitions[0]], img_labels[index_partitions[1]], img_labels[index_partitions[2]]
+print(len(X_train), len(X_valid), len(X_test))
 assert len(X_train) == len(y_train)
 assert len(X_valid) == len(y_valid)
-assert len(X_valid) == len(y_valid)
+assert len(X_test) == len(y_test)
 
 
 # Load in the ResNet50 layers with imagenet weights,
@@ -134,13 +135,8 @@ for layer in model.layers:
 model.summary()
 
 
-# Add dense layers on top to learn how to interpret
+# Add dense layer on top to learn how to interpret
 # the output of the convolutional layers
-# model.add(tf.keras.layers.Dense(units=128,  # Number of neurons
-#                                 activation='tanh',
-#                                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
-#                                 bias_initializer='zeros'
-#                                 ))
 model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
                                 activation='relu',
                                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
@@ -148,7 +144,6 @@ model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
                                 ))
 # Take a look at what our model looks like so far
 model.summary()
-
 
 # Compile the model so it's ready for training
 metrics = get_metrics()
@@ -160,40 +155,42 @@ model.compile(
 # Train the model
 resnet_prep = tf.keras.applications.resnet.preprocess_input
 csv_logger = tf.keras.callbacks.CSVLogger('training.log')
-early_stop = tf.keras.callbacks.EarlyStopping(min_delta=0.001, patience=2)  # After 2 epochs of <0.001 change, stop
+early_stop = tf.keras.callbacks.EarlyStopping(min_delta=0.01, patience=2)  # After 2 epochs of <0.001 change, stop
 history = model.fit(
     resnet_prep(X_train),
     y_train,
     validation_data=(resnet_prep(X_valid), y_valid),
     class_weight=label_weights,
-    epochs=25,
+    epochs=1,
     callbacks=[csv_logger, early_stop]
     )
-# print(history.history)
 
 # Let the model predict off of X_valid
 y_valid_pred = model.predict(resnet_prep(X_valid))
 
 # Print some images and their predicted number of shrimp
-NROWS = 3
+NROWS = 4
 NCOLS = 5
-fig, axs = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=(8, 6))
+fig, axs = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=(2 * NROWS, int(1.2 * NCOLS)))
 for i, img_array in enumerate(X_valid[:NROWS*NCOLS]):
-    axs[i//5][i%5].imshow(X_valid[i])
-    axs[i//5][i%5].set_title(f'{y_valid_pred[i][0]:.0f} | {y_valid[i]:.0f}')
-    axs[i//5][i%5].axis('off')
+    axs[i//NCOLS][i%NCOLS].imshow(X_valid[i])
+    axs[i//NCOLS][i%NCOLS].set_title(f'{y_valid_pred[i][0]:.0f} | {y_valid[i]:.0f}')
+    axs[i//NCOLS][i%NCOLS].axis('off')
+fig.tight_layout()
 plt.show()
 
 # Create histograms to compare validation dataset true labels with
 # the model's predictions
 fig, axs = plt.subplots(nrows=1, ncols=2)
 # Create y_valid histogram
-axs[0].hist(y_valid)
+axs[0].hist(y_valid, bins=np.unique(img_labels))
+axs[0].set_xticks(np.unique(img_labels))
 axs[0].set_xlabel('Label Value')
 axs[0].set_ylabel('Frequency')
 axs[0].set_title(f'Distribution of True Labels for Validation Data')
 # Create y_valid_pred histogram
-axs[1].hist(y_valid_pred)
+axs[1].hist(y_valid_pred, bins=np.unique(img_labels))
+axs[1].set_xticks(np.unique(img_labels))
 axs[1].set_xlabel('Label Value')
 axs[1].set_ylabel('Frequency')
 axs[1].set_title(f'Distribution of Predicted Labels for Validation Data')
