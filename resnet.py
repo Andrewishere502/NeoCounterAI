@@ -152,17 +152,16 @@ csv_logger = tf.keras.callbacks.CSVLogger('training.log')
 early_stop = tf.keras.callbacks.EarlyStopping(min_delta=0.025, patience=2)  # After 2 epochs of <0.025 change, stop
 history = model.fit(
     resnet_prep(X_train),
-    resnet_prep(y_train),
-    validation_data=(resnet_prep(X_valid), resnet_prep(y_valid)),
+    y_train,
+    validation_data=(resnet_prep(X_valid), y_valid),
     class_weight=label_weights,
-    epochs=1,
+    epochs=10,
     callbacks=[csv_logger, early_stop]
     )
 # print(history.history)
 
 # Let the model predict off of X_valid
-y_valid_pred = model.predict(X_valid)
-print(len(y_valid_pred), len(X_valid))
+y_valid_pred = model.predict(resnet_prep(X_valid))
 
 # Print some images and their predicted number of shrimp
 NROWS = 3
@@ -176,31 +175,6 @@ plt.show()
 
 
 # Create histogram for y_valid and y_valid_pred
-plt.hist(y_valid)
+# plt.hist(y_valid)
 plt.hist(y_valid_pred)
 plt.show()
-
-
-# # Print some images where the predicted number of shrimp was
-# # NOT 3 or 4
-# fig, axs = plt.subplots(nrows=NROWS, ncols=NCOLS)
-# ax_i = 0
-# for img_i, img_array in enumerate(X_valid):
-#     if int(y_valid_pred[img_i][0]) < 3 or int(y_valid_pred[img_i][0]) > 4:
-#         axs[ax_i//5][ax_i%5].imshow(X_valid[img_i])
-#         axs[ax_i//5][ax_i%5].set_title(f'{y_valid_pred[img_i][0]:.0f} | {y_valid[img_i]:.0f}')
-#         axs[ax_i//5][ax_i%5].axis('off')
-#         ax_i += 1
-#         if ax_i == NROWS * NCOLS:
-#             break
-# # Only show the figure if axes have been filled
-# if ax_i != 0:
-#     plt.show()
-# else:
-#     plt.cla()
-#     plt.clf()
-
-# print('Number of predictions less than 3 or over 4:')
-# print('N: ', sum(np.logical_or(y_valid_pred < 3, y_valid_pred > 4)))
-# print('Predictions:')
-# print('', y_valid_pred[np.logical_or(y_valid_pred < 3, y_valid_pred > 4)])
