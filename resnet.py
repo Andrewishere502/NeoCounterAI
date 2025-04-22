@@ -1,9 +1,45 @@
 import pathlib
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
+
+
+def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+    '''Return an array of each image as a 2D array of pixels, and an
+    array of labels corresponding to each image.
+    '''
+    # Load in the image arrays and the number of shrimp in them
+    img_arrays = []
+    img_labels = []
+    for row in meta_df.itertuples():
+        # First element in row is the index, so zip with columns
+        # starting from the first element.
+        index = row[0]
+        labeled_row = dict(zip(meta_df.columns, row[1:]))
+
+        # Construct the path to where
+        img_path = pathlib.Path(labeled_row['NewDir'],
+                                labeled_row['NewName'])
+
+        # load in the image
+        img_array = plt.imread(img_path)
+        
+        # Add the image array and its label to
+        # their respective lists
+        img_arrays.append(img_array)
+        img_labels.append(labeled_row['NShrimp'])
+        
+        # Display progress bar
+        print(f'\r{len(img_arrays)} of {len(meta_df)} loaded', end='')
+    print()
+
+    # Convert img_arrays and img_labels from lists to arrays
+    img_arrays = np.array(img_arrays)
+    img_labels = np.array(img_labels)
+    return (img_arrays, img_labels)
 
 
 # Set random seeds for numpy, python, and keras backend
@@ -16,34 +52,10 @@ meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
 # meta_df = meta_df[meta_df['Glare'] == 0]
 
-# Load in the image arrays and the number of shrimp in them
-img_arrays = []
-img_labels = []
-for row in meta_df.itertuples():
-    # First element in row is the index, so zip with columns
-    # starting from the first element.
-    index = row[0]
-    labeled_row = dict(zip(meta_df.columns, row[1:]))
 
-    # Construct the path to where
-    img_path = pathlib.Path(labeled_row['NewDir'],
-                            labeled_row['NewName'])
+# Load the image data
+img_arrays, img_labels = get_img_data(meta_df)
 
-    # load in the image
-    img_array = plt.imread(img_path)
-    
-    # Add the image array and its label to
-    # their respective lists
-    img_arrays.append(img_array)
-    img_labels.append(labeled_row['NShrimp'])
-    
-    # Display progress bar
-    print(f'\r{len(img_arrays)} of {len(meta_df)} loaded', end='')
-print()
-
-# Convert img_arrays and img_labels from lists to arrays
-img_arrays = np.array(img_arrays)
-img_labels = np.array(img_labels)
 
 # Calculate frequencies for each label
 label_frequencies = {label: np.sum(img_labels == label) for label in np.unique(img_labels)}
