@@ -1,5 +1,5 @@
 import pathlib
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 
 import numpy as np
 import pandas as pd
@@ -56,6 +56,16 @@ def get_frequencies(array: np.ndarray[Any]) -> Dict[Any, np.float32]:
         # Add this unique value to the dataframe
         freqs[unique_value] = np.sum(array == unique_value)
     return freqs
+
+
+def get_metrics() -> List[tf.keras.Metric]:
+    '''Return a list of Metric objects.'''
+    metrics = [
+        tf.keras.metrics.MeanSquaredError(),
+        tf.keras.metrics.RootMeanSquaredError(),
+        tf.keras.metrics.MeanAbsoluteError()
+    ]
+    return metrics
 
 
 # Set random seeds for numpy, python, and keras backend
@@ -130,11 +140,7 @@ model.summary()
 
 
 # Compile the model so it's ready for training
-metrics = [
-    tf.keras.metrics.MeanSquaredError(),
-    tf.keras.metrics.RootMeanSquaredError(),
-    tf.keras.metrics.MeanAbsoluteError()
-]
+metrics = get_metrics()
 model.compile(
     optimizer='adam',
     loss=tf.keras.losses.MeanSquaredError(),
