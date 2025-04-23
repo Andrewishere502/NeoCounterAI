@@ -1,6 +1,7 @@
 '''Script to train a CNN model based on the ResNet50 architecture
 (loaded with imagenet weights) to estimate the number of shrimp in a
-240 x 320 RGB image.
+240 x 320 RGB image. Images must be transformed using 
+tf.keras.applications.resnet.preprocess_input
 '''
 
 import datetime
@@ -130,6 +131,7 @@ np.random.shuffle(img_indices)
 index_partitions = np.split(img_indices, [int(0.7 * len(img_indices)),  # 0-70% for training
                                           int(0.9 * len(img_indices)),  # 70-90% for validation
                                           ])  # 90-100% for testing
+# print(index_partitions[1])  # Print indices of images that are in the validation set
 X_train, X_valid, X_test = img_arrays[index_partitions[0]], img_arrays[index_partitions[1]], img_arrays[index_partitions[2]]
 y_train, y_valid, y_test = img_labels[index_partitions[0]], img_labels[index_partitions[1]], img_labels[index_partitions[2]]
 print(len(X_train), len(X_valid), len(X_test))
