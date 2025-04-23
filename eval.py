@@ -47,7 +47,8 @@ def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
 # model_path = pathlib.Path('Models/20250422-181628/model.keras')  # 1 epochs
 # model_path = pathlib.Path('Models/20250422-222318/model.keras')  # 5 epochs
 # model_path = pathlib.Path('Models/20250422-224232/model.keras')  # 10 epochs
-model_path = pathlib.Path('Models/20250422-225100/model.keras')  # 20 epochs
+# model_path = pathlib.Path('Models/20250422-225100/model.keras')  # 20 epochs
+model_path = pathlib.Path('Models/20250423-002634/model.keras')  # 50 epochs
 model = tf.keras.models.load_model(model_path)
 
 

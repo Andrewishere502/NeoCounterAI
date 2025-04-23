@@ -102,7 +102,7 @@ def get_metrics() -> List[tf.keras.Metric]:
 
 
 # Path to data
-data_dir = pathlib.Path('DataNoSubstrate')
+data_dir = pathlib.Path(Settings.collection_name)
 meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
 # meta_df = meta_df[meta_df['Glare'] == 0]

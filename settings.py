@@ -7,16 +7,19 @@ class Settings:
     # Seed for random generators
     seed = 2
 
+    # Path to dataset to use
+    collection_name = 'DataNoSubstrate'
+
     # Add additional dense layers of n neurons before the output layer.
     # The first element is for the first dense layer added, which is
     # the closest to the convolutional layers.
     dense_layers = []
 
-    # Consts for fitting model
-    epochs = 1
+    # Consts for model.fit()
+    epochs = 50
     min_delta = 0.01
     patience = 2
-    max_weight = None
+    max_weight = 100
 
 
 def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:
