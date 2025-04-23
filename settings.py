@@ -17,7 +17,7 @@ class Settings:
     dense_layers = []
 
     # Consts for model.fit()
-    epochs = 50
+    epochs = 1
     min_delta = 0.01
     patience = 2
     max_weight = 1

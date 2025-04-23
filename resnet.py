@@ -106,15 +106,6 @@ data_dir = pathlib.Path(Settings.collection_name)
 meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
 
-# Path for saving this model and its info
-datestr = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-model_dir = pathlib.Path('Models', f'{datestr}/')
-if not model_dir.exists():
-    model_dir.mkdir()
-model_file = model_dir / 'model.keras'
-log_file = model_dir / 'training.log'
-settings_file = pathlib.Path(model_dir / 'settings.txt')
-
 # Load the image data
 img_arrays, img_labels = get_img_data(meta_df)
 
@@ -175,27 +166,62 @@ model.compile(
     loss=tf.keras.losses.MeanSquaredError(reduction='mean_with_sample_weight'),
     metrics=get_metrics()
 )
-# Train the model
 resnet_prep = tf.keras.applications.resnet.preprocess_input
+
+# Path for saving this the training log for this model
+in_progress_dir = pathlib.Path('Models', 'InProgress')
+if not in_progress_dir.exists():
+    in_progress_dir.mkdir()
+log_file = in_progress_dir / 'training.log'
+# Training logger callback, saves information about each epoch
+# as training progresses
 csv_logger = tf.keras.callbacks.CSVLogger(log_file)
+
+# Early stopping callback, terminating training if no progress is
+# actually being made
 early_stop = tf.keras.callbacks.EarlyStopping(min_delta=Settings.min_delta,
                                               patience=Settings.patience)
-history = model.fit(resnet_prep(X_train),
-                    y_train,
-                    validation_data=(resnet_prep(X_valid), y_valid),
-                    class_weight=label_weights,
-                    epochs=Settings.epochs,
-                    callbacks=[csv_logger, early_stop]
-                    )
+
+# Train the model
+model.fit(resnet_prep(X_train),
+          y_train,
+          validation_data=(resnet_prep(X_valid), y_valid),
+          class_weight=label_weights,
+          epochs=Settings.epochs,
+          callbacks=[csv_logger, early_stop]
+          )
+
+# Now that the model has finished training, we can compute its hash
+# which acts as a unique ID for this model's "brain"
+model_hash = hex(hash(model))
 
 # Save the model
+model_dir = pathlib.Path('Models', model_hash)
+# Ideally, this exact model has never been trained before because that
+# would be a waste of time training replicate models. If for some
+# reason this happened, add '-n' to the model_dir, where n indicates
+# the model replicate number.
+n = 1
+while True:
+    if model_dir.exists():
+        model_dir = pathlib.Path('Models', f'{model_hash}-{n}')
+        n += 1
+    else:
+        model_dir.mkdir()
+        break
+model_file = model_dir / 'model.keras'
 model.save(model_file)
 
-# Calculate the hash of this model
-model_hash = hash(model)
+# Move the training.log file into the same directory as the model
+log_file.rename(model_dir / log_file.name)
 
-# Save the settings for this model, and also save its hash in hex
-save_settings(settings_file, Settings, model_hash=hex(model_hash))
-
-# Print out the hash for this model, unique to the result of training
-print('Model hash:', hex(hash(model)))
+# Save the settings for this model in the same place the model was
+# stored
+settings_file = model_dir / 'settings.txt'
+date_trained = datetime.datetime.now().strftime('%Y/%m/%d')
+time_trained = datetime.datetime.now().strftime('%H:%M:%S')
+save_settings(settings_file,
+              Settings,
+              date_trained=date_trained,
+              time_trained=time_trained
+              )
