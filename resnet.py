@@ -1,3 +1,9 @@
+'''Script to train a CNN model based on the ResNet50 architecture
+(loaded with imagenet weights) to estimate the number of shrimp in a
+240 x 320 RGB image.
+'''
+
+import datetime
 import pathlib
 from typing import Tuple, Dict, Any, List
 
@@ -6,8 +12,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
+from settings import Settings, save_settings
+
+
 # Set random seeds for numpy, python, and keras backend
-tf.keras.utils.set_random_seed(2)
+tf.keras.utils.set_random_seed(Settings.seed)
 
 
 def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
@@ -97,15 +106,23 @@ meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
 # meta_df = meta_df[meta_df['Glare'] == 0]
 
+# Path for saving this model and its info
+datestr = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+model_dir = pathlib.Path('Models', f'{datestr}/')
+if not model_dir.exists():
+    model_dir.mkdir()
+model_file = model_dir / 'model.keras'
+log_file = model_dir / 'training.log'
+settings_file = pathlib.Path(model_dir / 'settings.txt')
+
 # Load the image data
 img_arrays, img_labels = get_img_data(meta_df)
 
 # Weight less frequent labels as more important
-label_weights = get_weights(img_labels)
+label_weights = get_weights(img_labels, max_weight=Settings.max_weight)
 # Print out the weights for each label
 for label, weight in label_weights.items():
     print(f'{label}: {weight:.2f}x')
-
 
 # Split data into a train, validation, and test set
 img_indices = np.arange(len(img_arrays))
@@ -134,64 +151,43 @@ for layer in model.layers:
 # Take a look at what our model looks like so far
 model.summary()
 
-
 # Add dense layer on top to learn how to interpret
 # the output of the convolutional layers
 model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
                                 activation='relu',
-                                kernel_initializer=tf.keras.initializers.GlorotUniform(seed=2),
+                                kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),
                                 bias_initializer='zeros'
                                 ))
 # Take a look at what our model looks like so far
 model.summary()
 
 # Compile the model so it's ready for training
-metrics = get_metrics()
 model.compile(
     optimizer='adam',
     loss=tf.keras.losses.MeanSquaredError(reduction='mean_with_sample_weight'),
-    metrics=metrics
+    metrics=get_metrics()
 )
 # Train the model
 resnet_prep = tf.keras.applications.resnet.preprocess_input
-csv_logger = tf.keras.callbacks.CSVLogger('training.log')
-early_stop = tf.keras.callbacks.EarlyStopping(min_delta=0.01, patience=2)  # After 2 epochs of <0.001 change, stop
-history = model.fit(
-    resnet_prep(X_train),
-    y_train,
-    validation_data=(resnet_prep(X_valid), y_valid),
-    class_weight=label_weights,
-    epochs=1,
-    callbacks=[csv_logger, early_stop]
-    )
+csv_logger = tf.keras.callbacks.CSVLogger(log_file)
+early_stop = tf.keras.callbacks.EarlyStopping(min_delta=Settings.min_delta,
+                                              patience=Settings.patience)
+history = model.fit(resnet_prep(X_train),
+                    y_train,
+                    validation_data=(resnet_prep(X_valid), y_valid),
+                    class_weight=label_weights,
+                    epochs=Settings.epochs,
+                    callbacks=[csv_logger, early_stop]
+                    )
 
-# Let the model predict off of X_valid
-y_valid_pred = model.predict(resnet_prep(X_valid))
+# Save the model
+model.save(model_file)
 
-# Print some images and their predicted number of shrimp
-NROWS = 4
-NCOLS = 5
-fig, axs = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=(2 * NROWS, int(1.2 * NCOLS)))
-for i, img_array in enumerate(X_valid[:NROWS*NCOLS]):
-    axs[i//NCOLS][i%NCOLS].imshow(X_valid[i])
-    axs[i//NCOLS][i%NCOLS].set_title(f'{y_valid_pred[i][0]:.0f} | {y_valid[i]:.0f}')
-    axs[i//NCOLS][i%NCOLS].axis('off')
-fig.tight_layout()
-plt.show()
+# Calculate the hash of this model
+model_hash = hash(model)
 
-# Create histograms to compare validation dataset true labels with
-# the model's predictions
-fig, axs = plt.subplots(nrows=1, ncols=2)
-# Create y_valid histogram
-axs[0].hist(y_valid, bins=np.unique(img_labels))
-axs[0].set_xticks(np.unique(img_labels))
-axs[0].set_xlabel('Label Value')
-axs[0].set_ylabel('Frequency')
-axs[0].set_title(f'Distribution of True Labels for Validation Data')
-# Create y_valid_pred histogram
-axs[1].hist(y_valid_pred, bins=np.unique(img_labels))
-axs[1].set_xticks(np.unique(img_labels))
-axs[1].set_xlabel('Label Value')
-axs[1].set_ylabel('Frequency')
-axs[1].set_title(f'Distribution of Predicted Labels for Validation Data')
-plt.show()
+# Save the settings for this model, and also save its hash in hex
+save_settings(settings_file, Settings, model_hash=hex(model_hash))
+
+# Print out the hash for this model, unique to the result of training
+print('Model hash:', hex(hash(model)))

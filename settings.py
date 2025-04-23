@@ -1,0 +1,45 @@
+import pathlib
+
+
+class Settings:
+    '''A class to store constants for the resnet.py script.'''
+
+    # Seed for random generators
+    seed = 2
+
+    # Consts for fitting model
+    epochs = 1
+    min_delta = 0.01
+    patience = 2
+    max_weight = None
+
+
+def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:
+    '''Save the settings from the Settings object to a specified (text)
+    file.
+    
+    Arguments:
+    filename -- name of file to write settings to
+    settings -- Settings object to write to file
+    **kwargs -- any additional variables that should
+                be saved in the file with the settings
+    '''
+    with open(filename, 'w') as file:
+        # Get all attribute names that aren't dudner attrs/methods.
+        # NOTE: attr_names will be sorted alphabetically by default.
+        attr_names = [attr for attr in dir(settings) if attr[:2] != '__']
+        # Write these attributes and their values to the specified
+        # directory.
+        for attr_name in attr_names:
+            attr_val = getattr(Settings, attr_name)
+            file.write(f'{attr_name}={attr_val}\n')
+
+        # Write the kwargs to the file as well
+        for name, val in kwargs.items():
+            file.write(f'{name}={val}\n')
+    return
+
+
+if __name__ == '__main__':
+    save_settings('test_settings.txt', Settings)
+    print(globals())
