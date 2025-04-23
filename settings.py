@@ -9,6 +9,7 @@ class Settings:
 
     # Path to dataset to use
     collection_name = 'DataNoSubstrate'
+    # collection_name = 'Data_v2.0'
 
     # Add additional dense layers of n neurons before the output layer.
     # The first element is for the first dense layer added, which is
@@ -19,7 +20,7 @@ class Settings:
     epochs = 50
     min_delta = 0.01
     patience = 2
-    max_weight = 100
+    max_weight = 1
 
 
 def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:

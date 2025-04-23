@@ -105,7 +105,6 @@ def get_metrics() -> List[tf.keras.Metric]:
 data_dir = pathlib.Path(Settings.collection_name)
 meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
-# meta_df = meta_df[meta_df['Glare'] == 0]
 
 # Path for saving this model and its info
 datestr = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
