@@ -153,8 +153,15 @@ for layer in model.layers:
 # Take a look at what our model looks like so far
 model.summary()
 
-# Add dense layer on top to learn how to interpret
-# the output of the convolutional layers
+# Add dense layer on top to learn how to interpret the output of the
+# convolutional layers
+for units in Settings.dense_layers:
+    model.add(tf.keras.layers.Dense(units=units,  # Number of neurons
+                                    activation='tanh',
+                                    kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),
+                                    bias_initializer='zeros'
+                                    ))
+# Add the final dense layer to do the actual regression
 model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
                                 activation='relu',
                                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),

@@ -7,6 +7,11 @@ class Settings:
     # Seed for random generators
     seed = 2
 
+    # Add additional dense layers of n neurons before the output layer.
+    # The first element is for the first dense layer added, which is
+    # the closest to the convolutional layers.
+    dense_layers = []
+
     # Consts for fitting model
     epochs = 1
     min_delta = 0.01
