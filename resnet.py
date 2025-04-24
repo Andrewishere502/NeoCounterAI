@@ -219,9 +219,9 @@ with open(partition_file, 'w') as file:
     # Save training partition
     file.write(f'train_partition = {sorted(map(int, data_partitions[0]))}\n')
     # Save validation partition
-    file.write(f'train_partition = {sorted(map(int, data_partitions[1]))}\n')
+    file.write(f'valid_partition = {sorted(map(int, data_partitions[1]))}\n')
     # Save testing partition
-    file.write(f'train_partition = {sorted(map(int, data_partitions[2]))}\n')
+    file.write(f'test_partition = {sorted(map(int, data_partitions[2]))}\n')
 
 # Move the training.log file into the same directory as the model
 log_file.rename(model_dir / log_file.name)
