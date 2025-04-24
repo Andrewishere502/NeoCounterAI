@@ -2,7 +2,7 @@
 
 import pathlib
 from typing import Tuple, Dict, Any, List
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 
 import numpy as np
 import pandas as pd
@@ -171,14 +171,29 @@ def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     return (img_arrays, img_labels)
 
 
+def true_round(value: float) -> int:
+    '''Round to the nearest whole number (>0.5 -> 1), NOT using bankers rounding
+    like python's builtin round function.
+    '''
+    return value // 1 + int((value % 1) > 0.5)
+
+
 # Path to file to write a summary file for all the models
 summary_file = pathlib.Path('Models', 'models_summary.csv')
 summary_df = pd.read_csv(summary_file, index_col='HexHash')
 # Create a row to represent this model
 model_row = OrderedDict(zip(summary_df.columns, [''] * len(summary_df.columns)))
 
-# Settings: epoch 1, max_weight None, DataNoSubstrate
-hex_hash = '0x104f0ddc'
+# Settings: epoch 1, max_weight 1, DataNoSubstrate
+# hex_hash = '0x104f0ddc'
+# Settings: epoch 5, max_weight 1, DataNoSubstrate
+# hex_hash = '0x1086addc'
+# Settings: epoch 10, max_weight 1, DataNoSubstrate
+# hex_hash = '0x105099dc'
+# Settings: epoch 20, max_weight 1, DataNoSubstrate
+hex_hash = '0x1068a1dc'
+# Settings: epoch 50, max_weight 1, DataNoSubstrate
+# hex_hash = '0x108a15dc'
 model_manager = ModelManager(hex_hash)
 
 # Store some settings to be written to summary_df
@@ -215,15 +230,33 @@ plt.savefig(model_manager.model_dir / 'pred-plot.png')
 plt.cla()
 plt.clf()
 
+
 # Count total number of images predicted
 model_row['N'] = len(y_valid_pred)
 # Count the number of correct
 n_correct = 0
 for pred, correct in zip(y_valid_pred, y_valid):
     # Round properly...
-    if pred // 1 + int((pred % 1) > 0.5) == correct:
+    if true_round(pred) == correct:
         n_correct += 1
 model_row['NCorrect'] = n_correct
+
+
+# Calculate by how much each guess is off, then count the frequencies
+# of these differences
+y_valid_pred_difs = np.array(list(map(true_round, y_valid_pred))) - y_valid
+diff_count = dict(Counter(y_valid_pred_difs))
+# Make a histogram like this so we avoid fiddling with bins
+plt.bar(diff_count.keys(), diff_count.values(), width=0.9)
+# Label the bars by their height
+for key, value in diff_count.items():
+    plt.text(key, value, value)
+plt.xlabel('Difference in Shrimp Predictions')
+plt.ylabel('Frequency')
+fig.tight_layout()
+plt.savefig(model_manager.model_dir / 'pred-diffs.png')
+plt.cla()
+plt.clf()
 
 # Save this model's data as a row in models_summary.csv
 summary_df.loc[hex_hash] = model_row
