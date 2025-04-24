@@ -1,26 +1,27 @@
 import pathlib
+from typing import List
 
 
 class Settings:
     '''A class to store constants for the resnet.py script.'''
 
     # Seed for random generators
-    seed = 2
+    seed: int = 2
 
     # Path to dataset to use
-    collection_name = 'DataNoSubstrate'
-    # collection_name = 'Data_v2.0'
+    collection_name: str = 'DataNoSubstrate'
+    # collection_name: str = 'Data_v2.0'
 
     # Add additional dense layers of n neurons before the output layer.
     # The first element is for the first dense layer added, which is
     # the closest to the convolutional layers.
-    dense_layers = []
+    dense_layers: List = []
 
     # Consts for model.fit()
-    epochs = 1
-    min_delta = 0.01
-    patience = 2
-    max_weight = 1
+    epochs: int = 1
+    min_delta: float = 0.01
+    patience: int = 2
+    max_weight: float = 1.0
 
 
 def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:
@@ -33,6 +34,10 @@ def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:
     **kwargs -- any additional variables that should
                 be saved in the file with the settings
     '''
+    # Function to format each line in settings.txt
+    line_fmtr = lambda name, val: f'{name}:{str(type(val))[8:-2]}={val}\n'
+
+    # Write settings variables and their values to file
     with open(filename, 'w') as file:
         # Get all attribute names that aren't dudner attrs/methods.
         # NOTE: attr_names will be sorted alphabetically by default.
@@ -41,11 +46,11 @@ def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:
         # directory.
         for attr_name in attr_names:
             attr_val = getattr(Settings, attr_name)
-            file.write(f'{attr_name}={attr_val}\n')
+            file.write(line_fmtr(attr_name, attr_val))
 
         # Write the kwargs to the file as well
         for name, val in kwargs.items():
-            file.write(f'{name}={val}\n')
+            file.write(line_fmtr(name, val))
     return
 
 
