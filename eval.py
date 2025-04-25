@@ -188,7 +188,7 @@ def create_pred_fig(nrows:int, ncols:int) -> Tuple[Figure, Axes]:
     shrimp and true number of shrimp.
     '''
     fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(2 * nrows, int(1.2 * ncols)))
-    for i, img_array in enumerate(X_valid[:nrows*ncols]):
+    for i, img_array in enumerate(X_img[:nrows*ncols]):
         axs[i//ncols][i%ncols].imshow(img_array)
         axs[i//ncols][i%ncols].set_title(f'{y_pred[i]:.0f} ({y_pred[i]:.2f}) | {y_true[i]:.0f}')
         axs[i//ncols][i%ncols].axis('off')
@@ -212,10 +212,10 @@ model_row = OrderedDict(zip(summary_df.columns, [''] * len(summary_df.columns)))
 # hex_hash = '0x1068a1dc'
 # Settings: epoch 50, max_weight 1, DataNoSubstrate
 # hex_hash = '0x108a15dc'
-# Settings: epoch 100, max_weight 1, DataNoSubstrate, 0.001 limit
-hex_hash = '0x108e55dc'
 # Settings: epoch 50, max_weight None, DataNoSubstrate
 # hex_hash = '0x110a30e5'
+# Settings: epoch 100, max_weight 1, DataNoSubstrate, 0.001 limit
+hex_hash = '0x108e55dc'
 
 print(f'Loading model {hex_hash}')
 model_manager = ModelManager(hex_hash)
@@ -230,16 +230,17 @@ data_dir = pathlib.Path(model_manager.get_setting('collection_name'))
 meta_df = pd.read_csv(data_dir / 'metadata.csv', index_col='ID')
 
 # Only keep the rows that belong to the validation set
-validation_is = model_manager.load_partition('valid')
-meta_df = meta_df.loc[validation_is]
+dataset_name = 'test'
+partition_is = model_manager.load_partition(dataset_name)
+meta_df = meta_df.loc[partition_is]
 
 # Load the images and their labels
-X_valid, y_true = get_img_data(meta_df)
+X_img, y_true = get_img_data(meta_df)
 
-# Let the model predict off of X_valid. Don't forget to transform the
+# Let the model predict off of X_img. Don't forget to transform the
 # images
 resnet_prep = tf.keras.applications.resnet.preprocess_input
-y_pred = model_manager.model.predict(resnet_prep(X_valid)).flatten()
+y_pred = model_manager.model.predict(resnet_prep(X_img)).flatten()
 y_pred_round = np.array(list(map(true_round, y_pred)))
 
 # Calculate by how much each guess is off, then count the frequencies
@@ -249,6 +250,13 @@ diff_count = dict(Counter(y_pred_difs))
 
 # Array of unique shrimp counts
 unique_shrimp_counts = np.unique(y_true)
+color_scale = []
+color_inc = 0.8 / len(unique_shrimp_counts)
+for i, _ in enumerate(unique_shrimp_counts):
+    # Decrement r and g as i increases to make higher-shrimp-count
+    # bars more blue
+    color = (0.8 - color_inc * i, 0.8 - color_inc * i, 0.8)
+    color_scale.append(color)
 
 # Get the models predictions, grouped by the true number of shrimp for
 # each prediction
@@ -270,35 +278,59 @@ for usc in unique_shrimp_counts:
 # Paired t-test to determine if predicted n shrimp is statistically
 # different from true n shrimp, on average
 result = stats.ttest_rel(y_pred, y_true)
-print(f'Paired t-test; pvalue = {result.pvalue:.4f}, df={result.df}')
-model_row['PredVsTrue_pval'] = result.pvalue
-model_row['PredVsTrue_diff'] = result.pvalue < 0.05
+paired_t_p = result.pvalue
+print(f'Paired t-test; pvalue = {paired_t_p:.4f}, df={result.df}')
+model_row['PredVsTrue_pval'] = paired_t_p
+model_row['PredVsTrue_diff'] = paired_t_p < 0.05
 
 
 # ANOVA to see if any image labels are predicted differently than
 # others, on average
 result = stats.f_oneway(*y_pred_diffs_by_true.values())
-print(f'ANOVA; pvalue = {result.pvalue:.4f}')
-model_row['PredVsTrueGrouped_pval'] = result.pvalue
-model_row['PredVsTrueGrouped_diff'] = result.pvalue < 0.05
+anova_p = result.pvalue
+print(f'ANOVA; pvalue = {anova_p:.4f}')
+model_row['PredVsTrueGrouped_pval'] = anova_p
+model_row['PredVsTrueGrouped_diff'] = anova_p < 0.05
+
+
+# Conduct an ad-hoc test to check which groups are different. Use an
+# unpaired t-test for this.
+# Adjust alpha to account for multiple tests increasing chance to find
+# statistical difference.
+n_tests = sum(range(2, len(y_pred_diffs_by_true)))  # Calc number of tests being done
+adj_alpha = 0.05 / n_tests
+for i, (group_1_name, group_1_data) in enumerate(y_pred_diffs_by_true.items()):
+    for group_2_name, group_2_data in list(y_pred_diffs_by_true.items())[i:]:
+        # Don't test group against itself
+        if group_1_name == group_2_name:
+            continue
+        # Conduct test
+        result = stats.ttest_ind(group_1_data, group_2_data)
+        print(f'Testing {group_1_name} against {group_2_name}')
+        print(f'\tUnpaired t-test; pvalue = {result.pvalue:.4f}, df = {result.df}, alpha = {adj_alpha:.5f}', end='')
+        # Indicate significance
+        if result.pvalue < adj_alpha:
+            print('  *')
+        else:
+            print()
 
 
 # Count total number of images predicted
-model_row['NValid'] = len(y_pred)
+model_row['N'] = len(y_pred)
 # Count the number of correct
 n_correct = 0
 for pred, correct in zip(y_pred, y_true):
     # Round properly...
     if true_round(pred) == correct:
         n_correct += 1
-model_row['NValidCorrect'] = n_correct
+model_row['NCorrect'] = n_correct
 
 
 # Print some images and their predicted number of shrimp
 NROWS = 4
 NCOLS = 5
 fig, axs = create_pred_fig(NROWS, NCOLS)
-fig.savefig(model_manager.model_dir / 'valid-pred-plot.png')
+fig.savefig(model_manager.model_dir / f'{dataset_name}-pred-plot.png')
 plt.cla()
 plt.clf()
 
@@ -308,10 +340,29 @@ plt.bar(diff_count.keys(), diff_count.values(), width=0.9)
 # Label the bars by their height
 for key, value in diff_count.items():
     plt.text(key, value, value)
-plt.xlabel('Difference in Shrimp Predictions')
+plt.xlabel('Additional Shrimp Predicted')
 plt.ylabel('Frequency')
 plt.tight_layout()
-plt.savefig(model_manager.model_dir / 'valid-pred-diffs.png')
+plt.savefig(model_manager.model_dir / f'{dataset_name}-pred-diffs.png')
+plt.cla()
+plt.clf()
+
+
+# Histogram of average prediction error for each image label
+avg_diff = [sum(diffs)/len(diffs) for diffs in y_pred_diffs_by_true.values()]
+se_diff = [stats.sem(diffs) for diffs in y_pred_diffs_by_true.values()]
+plt.bar(y_pred_diffs_by_true.keys(), avg_diff, color=color_scale)
+# Add error bars using SE
+plt.errorbar(y_pred_diffs_by_true.keys(), avg_diff, yerr=se_diff, fmt='.', color='r', capsize=8)
+# Label bars with number of predictions represented
+for key, diffs in y_pred_diffs_by_true.items():
+    avg = sum(diffs)/len(diffs)
+    plt.text(key-0.1, 0.2 if avg < 0 else -0.2, f'N={len(diffs)}')
+plt.xlabel('True Shrimp Count')
+plt.ylabel('Additional Shrimp Predicted')
+plt.xticks(unique_shrimp_counts)
+plt.tight_layout()
+plt.savefig(model_manager.model_dir / f'{dataset_name}-avg-pred-diffs.png')
 plt.cla()
 plt.clf()
 
@@ -320,10 +371,10 @@ plt.clf()
 # in image
 plt.violinplot(y_pred_by_true.values(), y_pred_by_true.keys())
 plt.plot(unique_shrimp_counts, unique_shrimp_counts, linestyle='dashed')
-plt.xlabel('True Number of Shrimp')
-plt.ylabel('Predicted Number of Shrimp')
+plt.xlabel('True Shrimp Count')
+plt.ylabel('Predicted Shrimp Count')
 plt.xticks(unique_shrimp_counts)
-plt.savefig(model_manager.model_dir / 'valid-pred-violin.png')
+plt.savefig(model_manager.model_dir / f'{dataset_name}-pred-violin.png')
 plt.cla()
 plt.clf()
 
@@ -332,10 +383,10 @@ plt.clf()
 # grouped by number of shrimp in image
 plt.violinplot(y_pred_diffs_by_true.values(), y_pred_diffs_by_true.keys())
 plt.plot(unique_shrimp_counts, [0] * len(unique_shrimp_counts), linestyle='dashed')
-plt.xlabel('True Number of Shrimp')
-plt.ylabel('Difference Between Predicted and True Number of Shrimp')
+plt.xlabel('True Shrimp Count')
+plt.ylabel('Additional Shrimp Predicted')
 plt.xticks(unique_shrimp_counts)
-plt.savefig(model_manager.model_dir / 'valid-pred-diff-violin.png')
+plt.savefig(model_manager.model_dir / f'{dataset_name}-pred-diff-violin.png')
 plt.cla()
 plt.clf()
 
@@ -358,7 +409,7 @@ summary_df.to_csv(summary_file)
 # # Print some images and their predicted number of shrimp
 # fig, axs = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=(2 * NROWS, int(1.2 * NCOLS)))
 # ax_i = 0
-# for i, img_array in enumerate(X_valid):
+# for i, img_array in enumerate(X_img):
 #     pred = y_pred[i]
 #     pred_round = round(y_pred[i])
 #     correct = y_true[i]
