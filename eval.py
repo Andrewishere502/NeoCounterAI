@@ -230,8 +230,8 @@ data_dir = pathlib.Path(model_manager.get_setting('collection_name'))
 meta_df = pd.read_csv(data_dir / 'metadata.csv', index_col='ID')
 
 # Only keep the rows that belong to the validation set
-dataset_name = 'test'
-partition_is = model_manager.load_partition(dataset_name)
+partition_name = 'test'
+partition_is = model_manager.load_partition(partition_name)
 meta_df = meta_df.loc[partition_is]
 
 # Load the images and their labels
@@ -279,7 +279,7 @@ for usc in unique_shrimp_counts:
 # different from true n shrimp, on average
 result = stats.ttest_rel(y_pred, y_true)
 paired_t_p = result.pvalue
-print(f'Paired t-test; pvalue = {paired_t_p:.4f}, df={result.df}')
+print(f'Paired t-test; pvalue = {paired_t_p:.3e}, df={result.df}')
 model_row['PredVsTrue_pval'] = paired_t_p
 model_row['PredVsTrue_diff'] = paired_t_p < 0.05
 
@@ -288,31 +288,9 @@ model_row['PredVsTrue_diff'] = paired_t_p < 0.05
 # others, on average
 result = stats.f_oneway(*y_pred_diffs_by_true.values())
 anova_p = result.pvalue
-print(f'ANOVA; pvalue = {anova_p:.4f}')
+print(f'ANOVA; pvalue = {anova_p:.3e}')
 model_row['PredVsTrueGrouped_pval'] = anova_p
 model_row['PredVsTrueGrouped_diff'] = anova_p < 0.05
-
-
-# Conduct an ad-hoc test to check which groups are different. Use an
-# unpaired t-test for this.
-# Adjust alpha to account for multiple tests increasing chance to find
-# statistical difference.
-n_tests = sum(range(2, len(y_pred_diffs_by_true)))  # Calc number of tests being done
-adj_alpha = 0.05 / n_tests
-for i, (group_1_name, group_1_data) in enumerate(y_pred_diffs_by_true.items()):
-    for group_2_name, group_2_data in list(y_pred_diffs_by_true.items())[i:]:
-        # Don't test group against itself
-        if group_1_name == group_2_name:
-            continue
-        # Conduct test
-        result = stats.ttest_ind(group_1_data, group_2_data)
-        print(f'Testing {group_1_name} against {group_2_name}')
-        print(f'\tUnpaired t-test; pvalue = {result.pvalue:.4f}, df = {result.df}, alpha = {adj_alpha:.5f}', end='')
-        # Indicate significance
-        if result.pvalue < adj_alpha:
-            print('  *')
-        else:
-            print()
 
 
 # Count total number of images predicted
@@ -330,7 +308,7 @@ model_row['NCorrect'] = n_correct
 NROWS = 4
 NCOLS = 5
 fig, axs = create_pred_fig(NROWS, NCOLS)
-fig.savefig(model_manager.model_dir / f'{dataset_name}-pred-plot.png')
+fig.savefig(model_manager.model_dir / f'{partition_name}-pred-plot.png')
 plt.cla()
 plt.clf()
 
@@ -343,7 +321,7 @@ for key, value in diff_count.items():
 plt.xlabel('Additional Shrimp Predicted')
 plt.ylabel('Frequency')
 plt.tight_layout()
-plt.savefig(model_manager.model_dir / f'{dataset_name}-pred-diffs.png')
+plt.savefig(model_manager.model_dir / f'{partition_name}-pred-diffs.png')
 plt.cla()
 plt.clf()
 
@@ -351,7 +329,7 @@ plt.clf()
 # Histogram of average prediction error for each image label
 avg_diff = [sum(diffs)/len(diffs) for diffs in y_pred_diffs_by_true.values()]
 se_diff = [stats.sem(diffs) for diffs in y_pred_diffs_by_true.values()]
-plt.bar(y_pred_diffs_by_true.keys(), avg_diff, color=color_scale)
+plt.bar(y_pred_diffs_by_true.keys(), avg_diff)#, color=color_scale)
 # Add error bars using SE
 plt.errorbar(y_pred_diffs_by_true.keys(), avg_diff, yerr=se_diff, fmt='.', color='r', capsize=8)
 # Label bars with number of predictions represented
@@ -362,7 +340,7 @@ plt.xlabel('True Shrimp Count')
 plt.ylabel('Additional Shrimp Predicted')
 plt.xticks(unique_shrimp_counts)
 plt.tight_layout()
-plt.savefig(model_manager.model_dir / f'{dataset_name}-avg-pred-diffs.png')
+plt.savefig(model_manager.model_dir / f'{partition_name}-avg-pred-diffs.png')
 plt.cla()
 plt.clf()
 
@@ -374,7 +352,7 @@ plt.plot(unique_shrimp_counts, unique_shrimp_counts, linestyle='dashed')
 plt.xlabel('True Shrimp Count')
 plt.ylabel('Predicted Shrimp Count')
 plt.xticks(unique_shrimp_counts)
-plt.savefig(model_manager.model_dir / f'{dataset_name}-pred-violin.png')
+plt.savefig(model_manager.model_dir / f'{partition_name}-pred-violin.png')
 plt.cla()
 plt.clf()
 
@@ -386,7 +364,7 @@ plt.plot(unique_shrimp_counts, [0] * len(unique_shrimp_counts), linestyle='dashe
 plt.xlabel('True Shrimp Count')
 plt.ylabel('Additional Shrimp Predicted')
 plt.xticks(unique_shrimp_counts)
-plt.savefig(model_manager.model_dir / f'{dataset_name}-pred-diff-violin.png')
+plt.savefig(model_manager.model_dir / f'{partition_name}-pred-diff-violin.png')
 plt.cla()
 plt.clf()
 
