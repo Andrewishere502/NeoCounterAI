@@ -140,8 +140,6 @@ model.add(tf.keras.applications.ResNet50(input_shape=(240, 320, 3),
 # Make resnet layers untrainable
 for layer in model.layers:
     layer.trainable = False
-# Take a look at what our model looks like so far
-model.summary()
 
 # Add dense layer on top to learn how to interpret the output of the
 # convolutional layers
@@ -157,8 +155,6 @@ model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
                                 kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),
                                 bias_initializer='zeros'
                                 ))
-# Take a look at what our model looks like so far
-model.summary()
 
 # Compile the model so it's ready for training
 model.compile(
@@ -236,3 +232,6 @@ save_settings(settings_file,
               date_trained=date_trained,
               time_trained=time_trained
               )
+
+
+print(model_hash)
