@@ -198,9 +198,10 @@ def create_pred_fig(nrows:int, ncols:int) -> Tuple[Figure, Axes]:
 
 # Path to file to write a summary file for all the models
 summary_file = pathlib.Path('Models', 'models_summary.csv')
-summary_df = pd.read_csv(summary_file, index_col='HexHash')
+# summary_df = pd.read_csv(summary_file, index_col='HexHash')
 # Create a row to represent this model
-model_row = OrderedDict(zip(summary_df.columns, [''] * len(summary_df.columns)))
+# model_row = OrderedDict(zip(summary_df.columns, [''] * len(summary_df.columns)))
+model_row = OrderedDict()
 
 # Settings: epoch 1, max_weight 1, DataNoSubstrate
 # hex_hash = '0x104f0ddc'
@@ -277,20 +278,33 @@ for usc in unique_shrimp_counts:
 
 # Paired t-test to determine if predicted n shrimp is statistically
 # different from true n shrimp, on average
-result = stats.ttest_rel(y_pred, y_true)
-paired_t_p = result.pvalue
-print(f'Paired t-test; pvalue = {paired_t_p:.3e}, df={result.df}')
-model_row['PredVsTrue_pval'] = paired_t_p
-model_row['PredVsTrue_diff'] = paired_t_p < 0.05
+ttest_result = stats.ttest_rel(y_pred, y_true)
+paired_t_p = ttest_result.pvalue
+print(f'Paired t-test; pvalue = {paired_t_p:.2e}, df = {ttest_result.df}')
+model_row['PredVsTrueP'] = paired_t_p
 
 
 # ANOVA to see if any image labels are predicted differently than
 # others, on average
-result = stats.f_oneway(*y_pred_diffs_by_true.values())
-anova_p = result.pvalue
-print(f'ANOVA; pvalue = {anova_p:.3e}')
-model_row['PredVsTrueGrouped_pval'] = anova_p
-model_row['PredVsTrueGrouped_diff'] = anova_p < 0.05
+anova_result = stats.f_oneway(*y_pred_diffs_by_true.values())
+anova_p = anova_result.pvalue
+print(f'ANOVA; pvalue = {anova_p:.2e}')
+model_row['PredDiffByTrueANOVAP'] = anova_p
+
+
+# Regression to determine if there is a significant relationship
+# (positive or negative) between the true number of shrimp visible in
+# an image and the model's prediction error. If significant, this would
+# suggest the model is specializing in identifying 4 shrimp in an image
+# and not generalizing as well.
+reg_result = stats.linregress(y_pred_difs, y_true)
+reg_p = reg_result.pvalue
+reg_m = reg_result.slope
+reg_b = reg_result.intercept
+print(f'Linear regression; pvalue = {reg_p:.2e}, slope = {reg_m:.2e}, intercept = {reg_b:.2e}')
+model_row['PredDiffByTrueRegP'] = reg_p
+model_row['PredDiffByTrueRegM'] = reg_m
+model_row['PredDiffByTrueRegB'] = reg_b
 
 
 # Count total number of images predicted
@@ -378,6 +392,15 @@ plt.clf()
 # plt.plot(y_true, 0*y_true)  # Plot y = 0
 # plt.show()
 
+
+# Load in the summary csv file as a dataframe
+summary_df = pd.read_csv(summary_file, index_col='HexHash')
+
+# Ensure all stats added to the model row are valid columns in the
+# summary dataframe
+for col_name in model_row.keys():
+    if col_name not in summary_df.columns:
+        raise ValueError(f'Invalid column {col_name}, not found in summary file header')
 
 # Save this model's data as a row in models_summary.csv
 summary_df.loc[hex_hash] = model_row
