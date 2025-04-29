@@ -138,12 +138,9 @@ class ModelManager:
         if partition_name == 'train':
             # First line is training partition
             p = 0
-        elif partition_name == 'valid':
-            # First line is validation partition
-            p = 1
         elif partition_name == 'test':
             # First line is testing partition
-            p = 2
+            p = 1
         else:
             raise ValueError(f'No partition of name \'{partition_name}\'')
 

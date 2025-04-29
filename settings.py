@@ -18,10 +18,11 @@ class Settings:
     dense_layers: List = []
 
     # Consts for model.fit()
-    epochs: int = 1
+    epochs: int = 100
     min_delta: float = 0.01
     patience: int = 2
     max_weight: float = 1.0
+    validation_split: float = 0.2  # Portion of training data to use as validation
 
 
 def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:

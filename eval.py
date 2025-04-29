@@ -104,20 +104,10 @@ summary_file = pathlib.Path('Models', 'models_summary.csv')
 
 # Identify all the models (i.e. model hashes) to assess
 hex_hashes = [
-    # Settings: epoch 1, max_weight 1, DataNoSubstrate
-    '0x104f0ddc',
-    # Settings: epoch 5, max_weight 1, DataNoSubstrate
-    '0x1086addc',
-    # Settings: epoch 10, max_weight 1, DataNoSubstrate
-    '0x105099dc',
-    # Settings: epoch 20, max_weight 1, DataNoSubstrate
-    '0x1068a1dc',
-    # Settings: epoch 50, max_weight 1, DataNoSubstrate
-    '0x108a15dc',
-    # Settings: epoch 50, max_weight None, DataNoSubstrate
-    '0x110a30e5',
-    # Settings: epoch 100, max_weight 1, DataNoSubstrate, 0.001 limit
-    '0x108e55dc'
+    # Settings: epoch 1, max_weight 1.0, DataNoSubstrate, 0.01 limit
+    '0x108f0a70'
+    # Settings: epoch 1, max_weight None, DataNoSubstrate, 0.01 limit
+    '0x1048996a',
 ]
 
 # Image processor necesasry for ResNet50 with imagenet weights
@@ -136,14 +126,27 @@ for hex_hash in hex_hashes:
     model_row['MaxWeight'] = model_manager.get_setting('max_weight')
     model_row['CollectionName'] = model_manager.get_setting('collection_name')
 
+
+    # Create a plot correlating epoch and training and validation MSE
+    log_df = pd.read_csv(model_manager.log_file)
+    fig, ax = plt.subplots()
+    ax.plot(log_df['epoch'], log_df['mean_squared_error'])
+    ax.plot(log_df['epoch'], log_df['val_mean_squared_error'])
+    ax.set_xlabel('Epoch #')
+    ax.set_ylabel('Mean Squared Error')
+    ax.legend(['Training Set', 'Validation Set'])
+    fig.savefig(model_manager.model_dir / 'epoch-to-mse.png')
+    del log_df  # Delete the log dataframe as it is not used again
+
+
     # Path to this model's data
     meta_df = pd.read_csv(model_manager.meta_file, index_col='ID')
 
     # Create histograms visualizing distribution of nshrimp labels
     # amongst all images and some subsets
-    partitions = ['all', 'train', 'valid', 'test']
+    partitions = ['all', 'train', 'test']
     for partition in partitions:
-        fig, ax = create_nshrimp_hist(meta_df, model_manager)
+        fig, ax = create_nshrimp_hist(meta_df, model_manager, partition=partition)
         fig.savefig(model_manager.model_dir / f'{partition}-nshrimp-hist.png')
     plt_clear()
 

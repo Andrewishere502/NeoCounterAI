@@ -115,18 +115,14 @@ label_weights = get_weights(img_labels, max_weight=Settings.max_weight)
 for label, weight in label_weights.items():
     print(f'{label}: {weight:.2f}x')
 
-# Split data into a train, validation, and test set
+# Shuffle array of indices
 img_indices = np.arange(len(img_arrays))
 np.random.shuffle(img_indices)
-data_partitions = np.split(img_indices, [int(0.7 * len(img_indices)),  # 0-70% for training
-                                          int(0.9 * len(img_indices)),  # 70-90% for validation
-                                          ])  # 90-100% for testing
-# print(data_partitions[1])  # Print indices of images that are in the validation set
-X_train, X_valid, X_test = img_arrays[data_partitions[0]], img_arrays[data_partitions[1]], img_arrays[data_partitions[2]]
-y_train, y_valid, y_test = img_labels[data_partitions[0]], img_labels[data_partitions[1]], img_labels[data_partitions[2]]
-print(len(X_train), len(X_valid), len(X_test))
+# Split dataset into 70% training, 30% testing
+data_partitions = np.split(img_indices, [int(0.70 * len(img_indices))])
+X_train, X_test = img_arrays[data_partitions[0]], img_arrays[data_partitions[1]]
+y_train, y_test = img_labels[data_partitions[0]], img_labels[data_partitions[1]]
 assert len(X_train) == len(y_train)
-assert len(X_valid) == len(y_valid)
 assert len(X_test) == len(y_test)
 
 
@@ -181,7 +177,7 @@ early_stop = tf.keras.callbacks.EarlyStopping(min_delta=Settings.min_delta,
 # Train the model
 model.fit(resnet_prep(X_train),
           y_train,
-          validation_data=(resnet_prep(X_valid), y_valid),
+          validation_split=Settings.validation_split,
           class_weight=label_weights,
           epochs=Settings.epochs,
           callbacks=[csv_logger, early_stop]
@@ -209,15 +205,13 @@ model_file = model_dir / 'model.keras'
 model.save(model_file)
 
 # Save the indices from meta_df that were partitioned into the
-# training, validation, and testing sets.
+# training and testing sets.
 partition_file = model_dir / 'data_partitions.txt'
 with open(partition_file, 'w') as file:
     # Save training partition
     file.write(f'train_partition = {sorted(map(int, data_partitions[0]))}\n')
-    # Save validation partition
-    file.write(f'valid_partition = {sorted(map(int, data_partitions[1]))}\n')
     # Save testing partition
-    file.write(f'test_partition = {sorted(map(int, data_partitions[2]))}\n')
+    file.write(f'test_partition = {sorted(map(int, data_partitions[1]))}\n')
 
 # Move the training.log file into the same directory as the model
 log_file.rename(model_dir / log_file.name)
@@ -230,7 +224,8 @@ time_trained = datetime.datetime.now().strftime('%H:%M:%S')
 save_settings(settings_file,
               Settings,
               date_trained=date_trained,
-              time_trained=time_trained
+              time_trained=time_trained,
+              model_hash=model_hash
               )
 
 
