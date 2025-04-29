@@ -70,6 +70,26 @@ def create_pred_fig(nrows:int, ncols:int) -> Tuple[Figure, Axes]:
     return fig, axs
 
 
+def create_nshrimp_hist(meta_df, partition=None) -> Tuple[Figure, Axes]:
+    '''Create a histogram of NShrimp labels for all images or a subset.
+    Return the figure and axis of the histogram.
+    '''
+    # If partition was specified, subset the data before histogram
+    if partition == None or partition == 'all':
+        hist_data = meta_df
+    else:
+        hist_data = meta_df.loc[model_manager.load_partition(partition)]
+
+    fig, ax = plt.subplots()
+    # Create histogram showing distribution of images with various
+    # NShrimp labels within the train partition
+    ax.hist(hist_data['NShrimp'], bins=np.unique(hist_data['NShrimp']))
+    ax.set_xlabel('Shrimp Counted')
+    ax.set_ylabel('Number of Images')
+    fig.tight_layout()
+    return fig, ax
+
+
 # Path to file to write a summary file for all the models
 summary_file = pathlib.Path('Models', 'models_summary.csv')
 
@@ -110,13 +130,20 @@ for hex_hash in hex_hashes:
     # Path to this model's data
     meta_df = pd.read_csv(model_manager.meta_file, index_col='ID')
 
-    # Only keep the rows that belong to a particular partition
+    # Create histograms visualizing distribution of nshrimp labels
+    # amongst all images and some subsets
+    partitions = ['all', 'train', 'valid', 'test']
+    for partition in partitions:
+        fig, ax = create_nshrimp_hist(meta_df)
+        fig.savefig(model_manager.model_dir / f'{partition}-nshrimp-hist.png')
+    plt.close()  # Close all figures at once
+
+    # Read the indices in meta_df that are included for this partition
+    # of the data
     partition_name = 'test'
     partition_is = model_manager.load_partition(partition_name)
-    meta_df = meta_df.loc[partition_is]
-
-    # Load the images and their labels
-    X_img, y_true = get_img_data(meta_df)
+    # Load the images from this partition and their labels
+    X_img, y_true = get_img_data(meta_df.loc[partition_is])
 
     # Let the model predict off of X_img. Don't forget to transform the
     # images
