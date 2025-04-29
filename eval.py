@@ -70,7 +70,7 @@ def create_pred_fig(nrows:int, ncols:int) -> Tuple[Figure, Axes]:
     return fig, axs
 
 
-def create_nshrimp_hist(meta_df, partition=None) -> Tuple[Figure, Axes]:
+def create_nshrimp_hist(meta_df: pd.DataFrame, model_manager: ModelManager, partition=None) -> Tuple[Figure, Axes]:
     '''Create a histogram of NShrimp labels for all images or a subset.
     Return the figure and axis of the histogram.
     '''
@@ -84,10 +84,19 @@ def create_nshrimp_hist(meta_df, partition=None) -> Tuple[Figure, Axes]:
     # Create histogram showing distribution of images with various
     # NShrimp labels within the train partition
     ax.hist(hist_data['NShrimp'], bins=np.unique(hist_data['NShrimp']))
+    ax.set_xticks(np.unique(hist_data['NShrimp']))
     ax.set_xlabel('Shrimp Counted')
     ax.set_ylabel('Number of Images')
     fig.tight_layout()
     return fig, ax
+
+
+def plt_clear() -> None:
+    '''Clear the axis and figure.'''
+    plt.cla()
+    plt.clf()
+    plt.close('all')
+    return
 
 
 # Path to file to write a summary file for all the models
@@ -134,9 +143,9 @@ for hex_hash in hex_hashes:
     # amongst all images and some subsets
     partitions = ['all', 'train', 'valid', 'test']
     for partition in partitions:
-        fig, ax = create_nshrimp_hist(meta_df)
+        fig, ax = create_nshrimp_hist(meta_df, model_manager)
         fig.savefig(model_manager.model_dir / f'{partition}-nshrimp-hist.png')
-    plt.close()  # Close all figures at once
+    plt_clear()
 
     # Read the indices in meta_df that are included for this partition
     # of the data
@@ -165,6 +174,7 @@ for hex_hash in hex_hashes:
         color = (0.8 - color_inc * i, 0.8 - color_inc * i, 0.8)
         color_scale.append(color)
 
+
     # Get the models predictions, grouped by the true number of shrimp for
     # each prediction
     y_pred_by_true = {}
@@ -172,6 +182,7 @@ for hex_hash in hex_hashes:
         # Get all predicted values for images with this many shrimp in them
         pred_for_count = y_pred_round[y_true == usc]
         y_pred_by_true[usc] = pred_for_count
+
 
     # Group the differences in prediction and truth by the true number of
     # shrimp
@@ -229,7 +240,7 @@ for hex_hash in hex_hashes:
     NCOLS = 5
     fig, axs = create_pred_fig(NROWS, NCOLS)
     fig.savefig(model_manager.model_dir / f'{partition_name}-pred-plot.png')
-    plt.close()
+    plt_clear()
 
 
     # Make a histogram like this so we avoid fiddling with bins
@@ -241,7 +252,7 @@ for hex_hash in hex_hashes:
     plt.ylabel('Frequency')
     plt.tight_layout()
     plt.savefig(model_manager.model_dir / f'{partition_name}-pred-diffs.png')
-    plt.close()
+    plt_clear()
 
 
     # Histogram of average prediction error for each image label
@@ -259,7 +270,7 @@ for hex_hash in hex_hashes:
     plt.xticks(unique_shrimp_counts)
     plt.tight_layout()
     plt.savefig(model_manager.model_dir / f'{partition_name}-avg-pred-diffs.png')
-    plt.close()
+    plt_clear()
 
 
     # Violin plot of predictions for images grouped by number of shrimp
@@ -270,7 +281,7 @@ for hex_hash in hex_hashes:
     plt.ylabel('Predicted Shrimp Count')
     plt.xticks(unique_shrimp_counts)
     plt.savefig(model_manager.model_dir / f'{partition_name}-pred-violin.png')
-    plt.close()
+    plt_clear()
 
 
     # Violin plot of how much predictions differ from truth for images
@@ -281,7 +292,7 @@ for hex_hash in hex_hashes:
     plt.ylabel('Additional Shrimp Predicted')
     plt.xticks(unique_shrimp_counts)
     plt.savefig(model_manager.model_dir / f'{partition_name}-pred-diff-violin.png')
-    plt.close()
+    plt_clear()
 
 
     # # Correlate true values and with the difference 
