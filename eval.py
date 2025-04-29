@@ -100,15 +100,16 @@ def plt_clear() -> None:
 
 
 # Path to file to write a summary file for all the models
-summary_file = pathlib.Path('Models', 'models_summary.csv')
+models_dir = pathlib.Path('Models')
+summary_file = models_dir / 'models_summary.csv'
 
-# Identify all the models (i.e. model hashes) to assess
-hex_hashes = [
-    # Settings: epoch 1, max_weight 1.0, DataNoSubstrate, 0.01 limit
-    '0x108f0a70'
-    # Settings: epoch 1, max_weight None, DataNoSubstrate, 0.01 limit
-    '0x1048996a',
-]
+# Grab all the model hashes that exist so we can assess all of them
+hex_hashes = []
+for model_dir in models_dir.iterdir():
+    hex_hash = model_dir.parts[-1]
+    if hex_hash[:2] == '0x':
+        hex_hashes.append(hex_hash)
+print(hex_hashes)
 
 # Image processor necesasry for ResNet50 with imagenet weights
 resnet_prep = tf.keras.applications.resnet.preprocess_input
