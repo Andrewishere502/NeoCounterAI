@@ -4,9 +4,16 @@ from typing import Dict, Any, List
 import tensorflow as tf
 
 
-
 class ModelManager:
-    def __init__(self, hex_hash: str, model_name: str=None) -> None:
+    def __init__(self, hex_hash: str, model_name: str=None, load_model: bool=True) -> None:
+        '''Initialize a new instance of the ModelManager class.
+        
+        Argument
+        hex_hash -- A hash value identifying the location of a model
+        model_name -- A name for this model
+        load_model -- Whether or not to load in the actual model object
+                      indicated
+        '''
         # Set model_name to the hex_hash if no name provided
         if model_name == None:
             self.__model_name: str = hex_hash
@@ -21,7 +28,8 @@ class ModelManager:
         self.__settings: Dict = self.__parse_settings()
 
         # NOTE: What type is this exactly?
-        self.__model = tf.keras.models.load_model(self.model_file)
+        if load_model:
+            self.__model = tf.keras.models.load_model(self.model_file)
         return
     
     @property
