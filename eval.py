@@ -91,6 +91,9 @@ hex_hashes = [
     '0x108e55dc'
 ]
 
+# Image processor necesasry for ResNet50 with imagenet weights
+resnet_prep = tf.keras.applications.resnet.preprocess_input
+
 # Assess each model
 for hex_hash in hex_hashes:
     print(f'Loading model {hex_hash}')
@@ -117,7 +120,6 @@ for hex_hash in hex_hashes:
 
     # Let the model predict off of X_img. Don't forget to transform the
     # images
-    resnet_prep = tf.keras.applications.resnet.preprocess_input
     y_pred = model_manager.model.predict(resnet_prep(X_img)).flatten()
     y_pred_round = np.array(list(map(true_round, y_pred)))
 
@@ -200,8 +202,7 @@ for hex_hash in hex_hashes:
     NCOLS = 5
     fig, axs = create_pred_fig(NROWS, NCOLS)
     fig.savefig(model_manager.model_dir / f'{partition_name}-pred-plot.png')
-    plt.cla()
-    plt.clf()
+    plt.close()
 
 
     # Make a histogram like this so we avoid fiddling with bins
@@ -213,8 +214,7 @@ for hex_hash in hex_hashes:
     plt.ylabel('Frequency')
     plt.tight_layout()
     plt.savefig(model_manager.model_dir / f'{partition_name}-pred-diffs.png')
-    plt.cla()
-    plt.clf()
+    plt.close()
 
 
     # Histogram of average prediction error for each image label
@@ -232,8 +232,7 @@ for hex_hash in hex_hashes:
     plt.xticks(unique_shrimp_counts)
     plt.tight_layout()
     plt.savefig(model_manager.model_dir / f'{partition_name}-avg-pred-diffs.png')
-    plt.cla()
-    plt.clf()
+    plt.close()
 
 
     # Violin plot of predictions for images grouped by number of shrimp
@@ -244,8 +243,7 @@ for hex_hash in hex_hashes:
     plt.ylabel('Predicted Shrimp Count')
     plt.xticks(unique_shrimp_counts)
     plt.savefig(model_manager.model_dir / f'{partition_name}-pred-violin.png')
-    plt.cla()
-    plt.clf()
+    plt.close()
 
 
     # Violin plot of how much predictions differ from truth for images
@@ -256,8 +254,7 @@ for hex_hash in hex_hashes:
     plt.ylabel('Additional Shrimp Predicted')
     plt.xticks(unique_shrimp_counts)
     plt.savefig(model_manager.model_dir / f'{partition_name}-pred-diff-violin.png')
-    plt.cla()
-    plt.clf()
+    plt.close()
 
 
     # # Correlate true values and with the difference 
