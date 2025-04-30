@@ -21,7 +21,7 @@ class Settings:
     epochs: int = 50
     min_delta: float = 0.01
     patience: int = 1
-    max_weight: float = 1.0
+    max_weight: float = None #1.0
     validation_split: float = 0.1  # Portion of training data to use as validation
 
 
@@ -54,7 +54,3 @@ def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:
             file.write(line_fmtr(name, val))
     return
 
-
-if __name__ == '__main__':
-    save_settings('test_settings.txt', Settings)
-    print(globals())
