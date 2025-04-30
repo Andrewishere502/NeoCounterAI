@@ -225,7 +225,8 @@ save_settings(settings_file,
               Settings,
               date_trained=date_trained,
               time_trained=time_trained,
-              model_hash=model_hash
+              model_hash=model_hash,
+              loss_function=model.loss.name
               )
 
 
