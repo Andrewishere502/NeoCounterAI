@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
+from tensorflow.keras.applications.resnet import preprocess_input
 
 from settings import Settings, save_settings
 
@@ -19,6 +20,23 @@ from settings import Settings, save_settings
 # Set random seeds for numpy, python, and keras backend
 tf.keras.utils.set_random_seed(Settings.seed)
 
+
+class MeanPowError(tf.keras.Loss):
+    '''Raise the error to the specified power, and return that value.'''
+    def __init__(self, p, **kwargs):
+        '''
+        
+        Arguments:
+        pow -- power to raise the error to
+        '''
+        super().__init__(self, **kwargs)
+
+        self.p = p
+        return
+    
+    def call(self, y_true, y_pred):
+        '''...'''
+        return tf.keras.ops.mean((y_true - y_pred) ** self.p)
 
 def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     '''Return an array of each image as a 2D array of pixels, and an
@@ -101,6 +119,38 @@ def get_metrics() -> List[tf.keras.Metric]:
     return metrics
 
 
+def construct_model() -> tf.keras.models.Sequential:
+    # Load in the ResNet50 layers with imagenet weights,
+    # and a different input dimensionality
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.applications.ResNet50(input_shape=(240, 320, 3),
+                                            weights='imagenet',
+                                            include_top=False,
+                                            pooling='avg'))
+    # Make resnet layers untrainable
+    for layer in model.layers:
+        layer.trainable = False
+
+    # Add the final dense layer to do the actual regression
+    model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
+                                    activation='relu',
+                                    kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),
+                                    bias_initializer='zeros'
+                                    ))
+    return model
+
+
+def compile_model(model: tf.keras.models.Sequential):
+    # Compile the model so it's ready for training
+    optimizer = tf.keras.optimizers.Adam()
+    loss = tf.keras.losses.MeanSquaredError(reduction='mean_with_sample_weight')
+    model.compile(
+        optimizer=optimizer,
+        loss=loss,
+        metrics=get_metrics()
+    )
+    return
+
 # Path to data
 data_dir = pathlib.Path(Settings.collection_name)
 meta_file = data_dir / 'metadata.csv'
@@ -118,53 +168,26 @@ for label, weight in label_weights.items():
 # Shuffle array of indices
 img_indices = np.arange(len(img_arrays))
 np.random.shuffle(img_indices)
-# Split dataset into 70% training, 30% testing
-data_partitions = np.split(img_indices, [int(0.70 * len(img_indices))])
+# Split dataset into 80% training, 20% testing
+data_partitions = np.split(img_indices, [int(0.80 * len(img_indices))])
 X_train, X_test = img_arrays[data_partitions[0]], img_arrays[data_partitions[1]]
 y_train, y_test = img_labels[data_partitions[0]], img_labels[data_partitions[1]]
 assert len(X_train) == len(y_train)
 assert len(X_test) == len(y_test)
 
 
-# Load in the ResNet50 layers with imagenet weights,
-# and a different input dimensionality
-model = tf.keras.models.Sequential()
-model.add(tf.keras.applications.ResNet50(input_shape=(240, 320, 3),
-                                         weights='imagenet',
-                                         include_top=False,
-                                         pooling='avg'))
-# Make resnet layers untrainable
-for layer in model.layers:
-    layer.trainable = False
+# Load the model architecture
+model = construct_model()
 
-# Add dense layer on top to learn how to interpret the output of the
-# convolutional layers
-for units in Settings.dense_layers:
-    model.add(tf.keras.layers.Dense(units=units,  # Number of neurons
-                                    activation='tanh',
-                                    kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),
-                                    bias_initializer='zeros'
-                                    ))
-# Add the final dense layer to do the actual regression
-model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
-                                activation='relu',
-                                kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),
-                                bias_initializer='zeros'
-                                ))
-
-# Compile the model so it's ready for training
-model.compile(
-    optimizer='adam',
-    loss=tf.keras.losses.MeanSquaredError(reduction='mean_with_sample_weight'),
-    metrics=get_metrics()
-)
-resnet_prep = tf.keras.applications.resnet.preprocess_input
+# Compile the model
+compile_model(model)
 
 # Path for saving this the training log for this model
 in_progress_dir = pathlib.Path('Models', 'InProgress')
 if not in_progress_dir.exists():
     in_progress_dir.mkdir()
 log_file = in_progress_dir / 'training.log'
+
 # Training logger callback, saves information about each epoch
 # as training progresses
 csv_logger = tf.keras.callbacks.CSVLogger(log_file)
@@ -175,7 +198,7 @@ early_stop = tf.keras.callbacks.EarlyStopping(min_delta=Settings.min_delta,
                                               patience=Settings.patience)
 
 # Train the model
-model.fit(resnet_prep(X_train),
+model.fit(preprocess_input(X_train),
           y_train,
           validation_split=Settings.validation_split,
           class_weight=label_weights,
