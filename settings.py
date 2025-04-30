@@ -12,11 +12,6 @@ class Settings:
     collection_name: str = 'DataNoSubstrate'
     # collection_name: str = 'Data_v2.0'
 
-    # Add additional dense layers of n neurons before the output layer.
-    # The first element is for the first dense layer added, which is
-    # the closest to the convolutional layers.
-    dense_layers: List = []
-
     # Consts for model.fit()
     epochs: int = 50
     min_delta: float = 0.01
