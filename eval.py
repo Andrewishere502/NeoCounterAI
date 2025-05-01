@@ -13,11 +13,18 @@ import tensorflow as tf
 import scipy.stats as stats
 
 from model_manager import ModelManager
+from enhancements import crop_img
 
 
-def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+def get_img_data(meta_df: pd.DataFrame, cropping: bool=True) -> Tuple[np.ndarray, np.ndarray]:
     '''Return an array of each image as a 2D array of pixels, and an
-    array of labels corresponding to each image.
+    array of labels corresponding to each image. Before returning each
+    image, crop it to remove the glare on the right of each image.
+
+    Arguments:
+    meta_df -- 
+    cropping -- Whether or not to crop the image to remove glare from
+                the right side
     '''
     # Load in the image arrays and the number of shrimp in them
     img_arrays = []
@@ -34,11 +41,28 @@ def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
 
         # load in the image
         img_array = plt.imread(img_path)
-        
+
+        if cropping:
+            # Crop the image to remove glare from the right
+            new_width = 240
+            new_height = 240
+            img_array = crop_img(img_array, 0, new_height-1, 0, new_width-1)
+            
+            # Recount the shrimp in this image
+            shrimp_positions = labeled_row['ShrimpPos'][1:-1].split(')(')
+            shrimp_positions = [tuple(map(int, pos.split(' '))) for pos in shrimp_positions]
+            n_shrimp = 0
+            for pos in shrimp_positions:
+                if pos[0] < new_width and pos[1] < new_height:
+                    n_shrimp += 1
+            img_labels.append(n_shrimp)
+        else:
+            # Don't modify the image shape
+            img_labels.append(labeled_row['NShrimp'])
+
         # Add the image array and its label to
         # their respective lists
         img_arrays.append(img_array)
-        img_labels.append(labeled_row['NShrimp'])
         
         # Display progress bar
         print(f'\r{len(img_arrays)} of {len(meta_df)} loaded', end='')

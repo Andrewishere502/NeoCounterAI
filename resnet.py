@@ -15,18 +15,22 @@ import tensorflow as tf
 from tensorflow.keras.applications.resnet import preprocess_input # type: ignore
 
 from settings import Settings, save_settings
+from enhancements import crop_img
 
 
 # Set random seeds for numpy, python, and keras backend
 tf.keras.utils.set_random_seed(Settings.seed)
 
 
-def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+def get_img_data(meta_df: pd.DataFrame, cropping: bool=True) -> Tuple[np.ndarray, np.ndarray]:
     '''Return an array of each image as a 2D array of pixels, and an
-    array of labels corresponding to each image.
+    array of labels corresponding to each image. Before returning each
+    image, crop it to remove the glare on the right of each image.
 
     Arguments:
     meta_df -- 
+    cropping -- Whether or not to crop the image to remove glare from
+                the right side
     '''
     # Load in the image arrays and the number of shrimp in them
     img_arrays = []
@@ -43,11 +47,28 @@ def get_img_data(meta_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
 
         # load in the image
         img_array = plt.imread(img_path)
-        
+
+        if cropping:
+            # Crop the image to remove glare from the right
+            new_width = 240
+            new_height = 240
+            img_array = crop_img(img_array, 0, new_height-1, 0, new_width-1)
+            
+            # Recount the shrimp in this image
+            shrimp_positions = labeled_row['ShrimpPos'][1:-1].split(')(')
+            shrimp_positions = [tuple(map(int, pos.split(' '))) for pos in shrimp_positions]
+            n_shrimp = 0
+            for pos in shrimp_positions:
+                if pos[0] < new_width and pos[1] < new_height:
+                    n_shrimp += 1
+            img_labels.append(n_shrimp)
+        else:
+            # Don't modify the image shape
+            img_labels.append(labeled_row['NShrimp'])
+
         # Add the image array and its label to
         # their respective lists
         img_arrays.append(img_array)
-        img_labels.append(labeled_row['NShrimp'])
         
         # Display progress bar
         print(f'\r{len(img_arrays)} of {len(meta_df)} loaded', end='')
@@ -105,15 +126,14 @@ def get_metrics() -> List[tf.keras.Metric]:
     return metrics
 
 
-def construct_model() -> tf.keras.models.Sequential:
+def construct_model(input_shape: Tuple[int, int, int]) -> tf.keras.models.Sequential:
     # Load in the ResNet50 layers with imagenet weights,
     # and a different input dimensionality
     model = tf.keras.models.Sequential()
-    resnet50 = tf.keras.applications.ResNet50(input_shape=(240, 320, 3),
+    resnet50 = tf.keras.applications.ResNet50(input_shape=input_shape,
                                               weights='imagenet',
                                               include_top=False,
                                               pooling='avg')
-    resnet50.summary()
     model.add(resnet50)
     # Make resnet layers untrainable
     for layer in model.layers:
@@ -210,6 +230,32 @@ def save_model(model_dir: pathlib.Path, model: tf.keras.models.Sequential, model
     return
 
 
+def unfreeze_blocks(model: tf.keras.models.Sequential, target_conv_id: str=None, target_block_id: str=None):
+    # The first "layer" in our model is resent50, get it here
+    resnet50 = model.layers[0]
+    # First layer is input, last layer is avg pooling
+    conv_layers = resnet50[1:-1].layers
+    for layer in conv_layers:
+        layer_name_parts = layer.name.split('_')
+        conv_id = None
+        block_id = None
+        other = None  # Catch all for stuff between
+        layer_type = None
+        if len(layer_name_parts) == 2:
+            conv_id, layer_type = layer_name_parts
+        elif len(layer_name_parts) >= 3:
+            conv_id, block_id, *other, layer_type = layer_name_parts
+        else:
+            raise ValueError(f'Unexpected layer name {layer.name} with < 2 parts')
+
+        # Switch on target layers, switch off other layers
+        if conv_id == target_conv_id and block_id == target_block_id:
+            layer.trainable = True
+        else:
+            layer.trainable = False
+    return
+
+
 # Path to data
 data_dir = pathlib.Path(Settings.collection_name)
 meta_file = data_dir / 'metadata.csv'
@@ -232,13 +278,13 @@ if Settings.lim_max_prop:
     del total_imgs
 
 # Load the image data
-img_arrays, img_labels = get_img_data(meta_df)
+img_arrays, img_labels = get_img_data(meta_df, cropping=Settings.crop_glare)
 
 # Weight less frequent labels as more important
 label_weights = get_weights(img_labels, max_weight=Settings.max_weight)
 # # Print out the weights for each label
-# for label, weight in label_weights.items():
-#     print(f'{label}: {weight:.2f}x')
+for label, weight in label_weights.items():
+    print(f'{label}: {weight:.2f}x')
 
 # Shuffle array of indices
 img_indices = np.arange(len(img_arrays))
@@ -250,9 +296,9 @@ y_train, y_test = img_labels[data_partitions[0]], img_labels[data_partitions[1]]
 assert len(X_train) == len(y_train)
 assert len(X_test) == len(y_test)
 
-
 # Load the model architecture
-model = construct_model()
+input_shape = img_arrays[0].shape
+model = construct_model(input_shape)
 
 # Compile the model
 compile_model(model)

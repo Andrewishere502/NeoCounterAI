@@ -15,6 +15,9 @@ class Settings:
     lim_min_prop = True
     # Drop images from a group that is under represented for balance
     lim_max_prop = False
+    # Whether or not to crop out the glare from the right side of each
+    # image
+    crop_glare = True
 
     # Consts for model.fit()
     epochs: int = 50
