@@ -98,6 +98,8 @@ class ModelManager:
             return int(value)
         elif dtype == 'float':
             return float(value)
+        elif dtype == 'bool':
+            return value == 'True'
         elif dtype == 'NoneType':
             return None
         elif dtype == 'list':

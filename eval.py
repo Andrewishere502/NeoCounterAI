@@ -85,7 +85,7 @@ def create_nshrimp_hist(meta_df: pd.DataFrame, model_manager: ModelManager, part
     # NShrimp labels within the train partition
     ax.hist(hist_data['NShrimp'], bins=np.unique(hist_data['NShrimp']))
     ax.set_xticks(np.unique(hist_data['NShrimp']))
-    ax.set_xlabel('Shrimp Counted')
+    ax.set_xlabel('Number of Visible Shrimp')
     ax.set_ylabel('Number of Images')
     fig.tight_layout()
     return fig, ax
@@ -142,6 +142,13 @@ for hex_hash in hex_hashes:
 
     # Path to this model's data
     meta_df = pd.read_csv(model_manager.meta_file, index_col='ID')
+
+    # Print the mean, median, SE, and SD of NShrimp column
+    median_n_shrimp = meta_df['NShrimp'].median()
+    mean_n_shrimp = meta_df['NShrimp'].mean()
+    se_n_shrimp = meta_df['NShrimp'].sem()
+    sd_n_shrimp = meta_df['NShrimp'].std()
+    print(f'Median = {median_n_shrimp}, Mean = {mean_n_shrimp}, SE = {se_n_shrimp}, SD = {sd_n_shrimp}')
 
     # Create histograms visualizing distribution of nshrimp labels
     # amongst all images and some subsets
@@ -214,7 +221,7 @@ for hex_hash in hex_hashes:
 
 
     # Regression to determine if there is a significant relationship
-    # (positive or negative) between the true number of shrimp visible in
+    # (positive or negative) between the true Number of Visible Shrimp in
     # an image and the model's prediction error. If significant, this would
     # suggest the model is specializing in identifying 4 shrimp in an image
     # and not generalizing as well.
@@ -243,8 +250,18 @@ for hex_hash in hex_hashes:
     NROWS = 4
     NCOLS = 5
     fig, axs = create_pred_fig(NROWS, NCOLS)
-    fig.savefig(model_manager.model_dir / f'{partition_name}-pred-plot.png')
+    fig.savefig(model_manager.model_dir / f'{partition_name}-25-rand-preds.png')
     plt_clear()
+
+    # TODO: Create plot of some images that were under predicted
+
+
+
+    # TODO: Create plot of some images that were overpredicted
+
+
+    # TODO: Create plot of some images that were correctly predicted
+
 
 
     # Make a histogram like this so we avoid fiddling with bins
@@ -269,7 +286,7 @@ for hex_hash in hex_hashes:
     for key, diffs in y_pred_diffs_by_true.items():
         avg = sum(diffs)/len(diffs)
         plt.text(key-0.1, 0.2 if avg < 0 else -0.2, f'N={len(diffs)}')
-    plt.xlabel('True Shrimp Count')
+    plt.xlabel('Number of Visible Shrimp')
     plt.ylabel('Additional Shrimp Predicted')
     plt.xticks(unique_shrimp_counts)
     plt.tight_layout()
@@ -281,8 +298,8 @@ for hex_hash in hex_hashes:
     # in image
     plt.violinplot(y_pred_by_true.values(), y_pred_by_true.keys())
     plt.plot(unique_shrimp_counts, unique_shrimp_counts, linestyle='dashed')
-    plt.xlabel('True Shrimp Count')
-    plt.ylabel('Predicted Shrimp Count')
+    plt.xlabel('Number of Visible Shrimp')
+    plt.ylabel('Predicted Number of Visible Shrimp')
     plt.xticks(unique_shrimp_counts)
     plt.savefig(model_manager.model_dir / f'{partition_name}-pred-violin.png')
     plt_clear()
@@ -292,7 +309,7 @@ for hex_hash in hex_hashes:
     # grouped by number of shrimp in image
     plt.violinplot(y_pred_diffs_by_true.values(), y_pred_diffs_by_true.keys())
     plt.plot(unique_shrimp_counts, [0] * len(unique_shrimp_counts), linestyle='dashed')
-    plt.xlabel('True Shrimp Count')
+    plt.xlabel('Number of Visible Shrimp')
     plt.ylabel('Additional Shrimp Predicted')
     plt.xticks(unique_shrimp_counts)
     plt.savefig(model_manager.model_dir / f'{partition_name}-pred-diff-violin.png')
