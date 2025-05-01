@@ -1,5 +1,5 @@
 import pathlib
-from typing import List
+from typing import Callable
 
 
 class Settings:
@@ -20,12 +20,18 @@ class Settings:
     crop_glare = True
 
     # Consts for model.fit()
-    epochs: int = 5
+    epochs: int = 0
     min_delta: float = 0.01
     patience: int = 1
     max_weight: float = None #1.0
     validation_split: float = 0.125  # Portion of training data to use as validation
     restore_best_weights = False
+
+    @classmethod
+    def modify(cls, **kwargs):
+        '''Modify the setting values'''
+        for attr_name, attr_val in kwargs:
+            cls.__setattr__(attr_name, attr_val)
 
 
 def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:
@@ -52,6 +58,9 @@ def save_settings(filename: pathlib.Path, settings: Settings, **kwargs) -> None:
             # directory.
             for attr_name in attr_names:
                 attr_val = getattr(Settings, attr_name)
+                if isinstance(attr_val, Callable):
+                    # Don't save this model's methods
+                    continue
                 file.write(line_fmtr(attr_name, attr_val))
 
         # Write the kwargs to the file as well

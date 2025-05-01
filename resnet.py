@@ -6,14 +6,20 @@ tf.keras.applications.resnet.preprocess_input
 
 import datetime
 import pathlib
+import json
 from typing import Tuple, Dict, Any
 from collections import Counter
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.applications.resnet import preprocess_input # type: ignore
+from tensorflow.keras.callbacks import CSVLogger, EarlyStopping  # type: ignore
+from tensorflow.keras.models import Sequential # type: ignore
+from tensorflow.keras.applications import ResNet50 # type: ignore
+from tensorflow.keras.layers import Dense # type: ignore
 from scipy import stats
 
 from settings import Settings, save_settings
@@ -23,6 +29,10 @@ from enhancements import crop_img
 # Set random seeds for numpy, python, and keras backend
 tf.keras.utils.set_random_seed(Settings.seed)
 
+
+###
+# Dataset functions
+###
 
 def get_img_data(meta_df: pd.DataFrame, cropping: bool=True) -> Tuple[np.ndarray, np.ndarray]:
     '''Return an array of each image as a 2D array of pixels, and an
@@ -82,63 +92,6 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool=True) -> Tuple[np.ndarray
     return (img_arrays, img_labels)
 
 
-def get_weights(array: np.ndarray[Any], max_weight: float=None) -> Dict[Any, np.float32]:
-    '''Return weights for all unique values within an array as a
-    dict, where the key is the unique value and the value (paired with
-    the key) is the frequency of that unique value divided by the max
-    frequency for any unique value.
-    
-    Arguments:
-    array -- An array of values
-    '''
-    weights = {}
-    freqs = Counter(array)
-    max_freq = max(freqs.values())
-    for value, freq in freqs.items():
-        # Potentially put an upper limit on the weight for a class
-        if max_weight == None:
-            weights[value] = max_freq / freq
-        else:
-            weights[value] = min(max_freq / freq, max_weight)
-    return weights
-
-
-def construct_model(input_shape: Tuple[int, int, int]) -> tf.keras.models.Sequential:
-    # Load in the ResNet50 layers with imagenet weights,
-    # and a different input dimensionality
-    model = tf.keras.models.Sequential()
-    resnet50 = tf.keras.applications.ResNet50(input_shape=input_shape,
-                                              weights='imagenet',
-                                              include_top=False,
-                                              pooling='avg')
-    model.add(resnet50)
-    # Make resnet layers untrainable
-    for layer in model.layers:
-        layer.trainable = False
-
-    # Add the final dense layer to do the actual regression
-    model.add(tf.keras.layers.Dense(units=1,  # Number of neurons
-                                    activation='relu',
-                                    kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),
-                                    bias_initializer='zeros'
-                                    ))
-    return model
-
-
-def compile_model(model: tf.keras.models.Sequential) -> None:
-    # Compile the model so it's ready for training
-    optimizer = tf.keras.optimizers.Adam()
-    loss = tf.keras.losses.MeanSquaredError(reduction='mean_with_sample_weight')
-    metrics = [tf.keras.metrics.MeanSquaredError()]
-    # loss = MeanPowError(6)  # x ** 6
-    model.compile(
-        optimizer=optimizer,
-        loss=loss,
-        metrics=metrics
-    )
-    return
-
-
 def max_limit_freqs(meta_df: pd.DataFrame) -> None:
     '''Return a copy of the dataframe with ...
     
@@ -185,30 +138,74 @@ def min_limit_freqs(meta_df: pd.DataFrame) -> None:
             all_rm_is.extend(rm_is)
     return meta_df.drop(index=all_rm_is)
 
+###
+# End dataset functions
+###
 
-def save_model(model_dir: pathlib.Path, model: tf.keras.models.Sequential, model_hash: str) -> None:
-    '''Save the keras model in a subdirectory named after the hex_hash
-    with in the specified model directory (i.e. where all models are
-    stored).
-    '''
-    # Ideally, this exact model has never been trained before because that
-    # would be a waste of time training replicate models. If for some
-    # reason this happened, add '-n' to the model_dir, where n indicates
-    # the model replicate number.
-    n = 1
-    while True:
-        if model_dir.exists():
-            model_dir = pathlib.Path('Models', f'{model_hash}-{n}')
-            n += 1
-        else:
-            model_dir.mkdir()
-            break
-    model_file = model_dir / 'model.keras'
-    model.save(model_file)
+
+def construct_model(input_shape: Tuple[int, int, int]) -> Sequential:
+    # Load in the ResNet50 layers with imagenet weights,
+    # and a different input dimensionality
+    model = Sequential()
+    resnet50 = ResNet50(input_shape=input_shape,
+                        weights='imagenet',
+                        include_top=False,
+                        pooling='avg'
+                        )
+    resnet50.trainable = False
+    model.add(resnet50)
+    # Make resnet layers untrainable
+    # for layer in model.layers:
+    #     layer.trainable = False
+    model.summary()
+
+    # Add the final dense layer to do the actual regression
+    model.add(Dense(units=1,  # Number of neurons
+              activation='relu',
+              kernel_initializer=tf.keras.initializers.GlorotUniform(seed=Settings.seed),
+              bias_initializer='zeros'
+              ))
+    return model
+
+
+def compile_model(model: Sequential) -> None:
+    # Compile the model so it's ready for training
+    optimizer = tf.keras.optimizers.Adam()
+    loss = tf.keras.losses.MeanSquaredError(reduction='mean_with_sample_weight')
+    metrics = [
+        tf.keras.metrics.MeanSquaredError()
+        ]
+    # loss = MeanPowError(6)  # x ** 6
+    model.compile(
+        optimizer=optimizer,
+        loss=loss,
+        metrics=metrics
+    )
     return
 
 
-# def unfreeze_blocks(model: tf.keras.models.Sequential, target_conv_id: str=None, target_block_id: str=None):
+def get_weights(array: np.ndarray[Any], max_weight: float=None) -> Dict[Any, np.float32]:
+    '''Return weights for all unique values within an array as a
+    dict, where the key is the unique value and the value (paired with
+    the key) is the frequency of that unique value divided by the max
+    frequency for any unique value.
+    
+    Arguments:
+    array -- An array of values
+    '''
+    weights = {}
+    freqs = Counter(array)
+    max_freq = max(freqs.values())
+    for value, freq in freqs.items():
+        # Potentially put an upper limit on the weight for a class
+        if max_weight == None:
+            weights[value] = max_freq / freq
+        else:
+            weights[value] = min(max_freq / freq, max_weight)
+    return weights
+
+
+# def unfreeze_blocks(model: Sequential, target_conv_id: str=None, target_block_id: str=None):
 #     # The first "layer" in our model is resent50, get it here
 #     resnet50 = model.layers[0]
 #     # First layer is input, last layer is avg pooling
@@ -249,11 +246,10 @@ def plt_clear() -> None:
     return
 
 
-# Path to data
+# Load in the meta data for the dataset/collection 
 data_dir = pathlib.Path(Settings.collection_name)
 meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
-meta_df = meta_df[meta_df['NShrimp'] < 9]  # Exclude 9 because it only has one image :(
 
 # Remove NSVs with very few images
 if Settings.lim_min_prop:
@@ -273,21 +269,8 @@ if Settings.lim_max_prop:
 # Load the image data
 img_arrays, img_labels = get_img_data(meta_df, cropping=Settings.crop_glare)
 
-# Weight less frequent labels as more important
-label_weights = get_weights(img_labels, max_weight=Settings.max_weight)
-# Print out tshe weights for each label
-# for label, weight in label_weights.items():
-#     print(f'{label}: {weight:.2f}x')
-
-# Shuffle array of indices
-img_indices = np.arange(len(img_arrays))
-np.random.shuffle(img_indices)
-# Split dataset into 80% training, 20% testing
-data_partitions = np.split(img_indices, [int(0.80 * len(img_indices))])
-X_train, X_test = img_arrays[data_partitions[0]], img_arrays[data_partitions[1]]
-y_train, y_test = img_labels[data_partitions[0]], img_labels[data_partitions[1]]
-assert len(X_train) == len(y_train)
-assert len(X_test) == len(y_test)
+# Split data into training and testing sets, 80/20
+X_train, X_test, y_train, y_test = train_test_split(img_arrays, img_labels, train_size=0.80)
 
 # Load the model architecture
 input_shape = img_arrays[0].shape
@@ -296,29 +279,35 @@ model = construct_model(input_shape)
 # Compile the model
 compile_model(model)
 
-# model.summary()
 
 # Path for saving this the training log for this model
-in_progress_dir = pathlib.Path('Models', 'InProgress')
-if not in_progress_dir.exists():
-    in_progress_dir.mkdir()
-log_file = in_progress_dir / 'training.log'
+model_dir = pathlib.Path('Models', 'InProgress')
+if model_dir.exists():
+    raise ValueError('Error: InProgress dir already exists.')
+else:
+    model_dir.mkdir()
+
+# Save the model's compile configuration
+with open(model_dir / 'compile_config.json', 'w') as file:
+    config = model.get_compile_config()
+    file.writelines(json.dumps(config))
+
 
 # Training logger callback, saves information about each epoch
 # as training progresses
-csv_logger = tf.keras.callbacks.CSVLogger(log_file)
+csv_logger = CSVLogger(model_dir / 'training.log')
 
 # Early stopping callback, terminating training if no progress is
 # actually being made
-early_stop = tf.keras.callbacks.EarlyStopping(min_delta=Settings.min_delta,
-                                              patience=Settings.patience,
-                                              restore_best_weights=Settings.restore_best_weights)
+early_stop = EarlyStopping(min_delta=Settings.min_delta,
+                           patience=Settings.patience,
+                           restore_best_weights=Settings.restore_best_weights)
 
 # Train the model
 model.fit(preprocess_input(X_train),
           y_train,
           validation_split=Settings.validation_split,
-          class_weight=label_weights,
+          class_weight=get_weights(img_labels, max_weight=Settings.max_weight),
           epochs=Settings.epochs,
           callbacks=[csv_logger, early_stop]
           )
@@ -328,26 +317,13 @@ model.fit(preprocess_input(X_train),
 model_hash = hex(hash(model))
 print(model_hash)
 
+# Rename the directory used for storing files associated with this
+# model to the hash of this model.
+model_dir = model_dir.rename(str(pathlib.Path(*model_dir.parts[:-1], model_hash)))
+
 # Save the model
-model_dir = pathlib.Path('Models', model_hash)
-save_model(model_dir, model, model_hash)
-
-# Save the indices from meta_df that were partitioned into the
-# training and testing sets.
-partition_file = model_dir / 'data_partitions.txt'
-with open(partition_file, 'w') as file:
-    # Save training partition
-    file.write(f'train_partition = {sorted(map(int, data_partitions[0]))}\n')
-    # Save testing partition
-    file.write(f'test_partition = {sorted(map(int, data_partitions[1]))}\n')
-
-# Move the training.log file into the same directory as the model
-log_file.rename(model_dir / log_file.name)
-# Delete the InProgress directory if it's empty now
-try:
-    in_progress_dir.rmdir()
-except OSError as e:
-    print(f'Unable to delete {in_progress_dir}, likely not empty')
+model_file = model_dir / 'model.keras'
+model.save(model_file)
 
 # Save the settings for this model in the same place the model was
 # stored
@@ -383,6 +359,10 @@ plt_clear()
 y_pred = np.round(model.predict(preprocess_input(X_test))).flatten()
 # Save a histogram of the model's predictions
 plt.hist(y_pred, bins=np.unique(y_pred))
+plt.xticks(np.unique(y_pred))
+max_height = max(Counter(y_pred).values())
+step = max(int(max_height / 3), 1)
+plt.yticks(range(0,max_height+step,step))
 plt.xlabel('Predicted Number of Visible Shrimp')
 plt.ylabel('Frequency')
 plt.savefig(model_dir / 'pred-hist.png')
@@ -394,7 +374,7 @@ plt_clear()
 y_err = y_pred - y_test
 # Save a histogram of the model's prediction errors
 pred_err_bins = [-3, -2, -1, 0, 1, 2, 3]
-plt.hist(pred_err_bins, bins=pred_err_bins)
+plt.hist(y_err, bins=pred_err_bins)
 plt.xticks(pred_err_bins)
 max_height = max(Counter(y_err).values())
 step = max(int(max_height / 3), 1)
@@ -415,33 +395,6 @@ for usc in np.unique(y_test):
     # Get all prediction errors for images with this many shrimp in them
     y_err_by_true[usc] = y_err[y_test == usc]
 
-# Save a histogram for the distribution of predictions for each true
-# number of visible shrimp
-for true_nvs, pred_nvs in y_pred_by_true.items():
-    unique_preds = np.unique(pred_nvs)
-    plt.hist(pred_nvs, bins=unique_preds)
-    plt.xticks(unique_preds)
-    max_height = max(Counter(pred_nvs).values())
-    step = max(int(max_height / 3), 1)
-    plt.yticks(range(0,max_height+step,step))
-    plt.xlabel('Predicted Number of Visible Shrimp')
-    plt.ylabel('Frequency')
-    plt.savefig(model_dir / f'pred-nvs_{true_nvs}-hist.png')
-    plt_clear()
-
-# Save a histogram for the distribution of prediction errors for each
-# true number of visible shrimp
-for true_nvs, pred_nvs_errs in y_err_by_true.items():
-    plt.hist(pred_nvs_errs, bins=pred_err_bins)
-    plt.xticks(pred_err_bins)
-    max_height = max(Counter(pred_nvs_errs).values())
-    step = max(int(max_height / 3), 1)
-    plt.yticks(range(0,max_height+step,step))
-    plt.xlabel('Predicted NVS Error')
-    plt.ylabel('Frequency')
-    plt.savefig(model_dir / f'pred-err-nvs_{true_nvs}-hist.png')
-    plt_clear()
-
 
 # Histogram of average prediction error for each image label
 avg_diff = [sum(errs)/len(errs) for errs in y_err_by_true.values()]
@@ -458,4 +411,15 @@ plt.ylabel('Additional NVS Predicted')
 plt.xticks(np.unique(y_train))
 plt.tight_layout()
 plt.savefig(model_dir / f'avg-pred-err.png')
+plt_clear()
+
+
+# Violin plot of predictions for images grouped by number of shrimp
+# in image
+plt.violinplot(y_pred_by_true.values(), y_pred_by_true.keys())
+plt.plot(y_pred_by_true.keys(), y_pred_by_true.keys(), linestyle='dashed')
+plt.xlabel('Number of Visible Shrimp')
+plt.ylabel('Predicted Number of Visible Shrimp')
+plt.xticks(list(y_pred_by_true.keys()))
+plt.savefig(model_dir / 'pred-violin.png')
 plt_clear()
