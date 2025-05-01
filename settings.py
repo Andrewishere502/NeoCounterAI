@@ -20,7 +20,7 @@ class Settings:
     crop_glare = True
 
     # Consts for model.fit()
-    epochs: int = 50
+    epochs: int = 5
     min_delta: float = 0.01
     patience: int = 1
     max_weight: float = None #1.0

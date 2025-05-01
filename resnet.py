@@ -1,18 +1,20 @@
 '''Script to train a CNN model based on the ResNet50 architecture
 (loaded with imagenet weights) to estimate the number of shrimp in a
-240 x 320 RGB image. Images must be transformed using 
+240 x 240 RGB image. Images must be transformed using 
 tf.keras.applications.resnet.preprocess_input
 '''
 
 import datetime
 import pathlib
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any
+from collections import Counter
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras.applications.resnet import preprocess_input # type: ignore
+from scipy import stats
 
 from settings import Settings, save_settings
 from enhancements import crop_img
@@ -80,21 +82,6 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool=True) -> Tuple[np.ndarray
     return (img_arrays, img_labels)
 
 
-def get_frequencies(array: np.ndarray[Any]) -> Dict[Any, np.float32]:
-    '''Return the frequency of all unique values within an array as a
-    dict, where the key is the unique value and the value (paired with
-    the key) is the frequency of that unique value.
-    
-    Arguments:
-    array -- An array of values
-    '''
-    freqs = {}
-    for unique_value in np.unique(array):
-        # Add this unique value to the dataframe
-        freqs[unique_value] = np.sum(array == unique_value)
-    return freqs
-
-
 def get_weights(array: np.ndarray[Any], max_weight: float=None) -> Dict[Any, np.float32]:
     '''Return weights for all unique values within an array as a
     dict, where the key is the unique value and the value (paired with
@@ -105,7 +92,7 @@ def get_weights(array: np.ndarray[Any], max_weight: float=None) -> Dict[Any, np.
     array -- An array of values
     '''
     weights = {}
-    freqs = get_frequencies(array)
+    freqs = Counter(array)
     max_freq = max(freqs.values())
     for value, freq in freqs.items():
         # Potentially put an upper limit on the weight for a class
@@ -114,16 +101,6 @@ def get_weights(array: np.ndarray[Any], max_weight: float=None) -> Dict[Any, np.
         else:
             weights[value] = min(max_freq / freq, max_weight)
     return weights
-
-
-def get_metrics() -> List[tf.keras.Metric]:
-    '''Return a list of Metric objects.'''
-    metrics = [
-        tf.keras.metrics.MeanSquaredError(),
-        # tf.keras.metrics.RootMeanSquaredError(),
-        # tf.keras.metrics.MeanAbsoluteError(),
-    ]
-    return metrics
 
 
 def construct_model(input_shape: Tuple[int, int, int]) -> tf.keras.models.Sequential:
@@ -152,11 +129,12 @@ def compile_model(model: tf.keras.models.Sequential) -> None:
     # Compile the model so it's ready for training
     optimizer = tf.keras.optimizers.Adam()
     loss = tf.keras.losses.MeanSquaredError(reduction='mean_with_sample_weight')
+    metrics = [tf.keras.metrics.MeanSquaredError()]
     # loss = MeanPowError(6)  # x ** 6
     model.compile(
         optimizer=optimizer,
         loss=loss,
-        metrics=get_metrics()
+        metrics=metrics
     )
     return
 
@@ -167,7 +145,7 @@ def max_limit_freqs(meta_df: pd.DataFrame) -> None:
     Arguments:
     meta_df -- 
     '''
-    img_freqs = get_frequencies(np.array(meta_df['NShrimp']))
+    img_freqs = Counter(np.array(meta_df['NShrimp']))
     img_total = sum(img_freqs.values())
     n_shrimp_groups = len(img_freqs.keys())
     exp_prop = 1 / n_shrimp_groups
@@ -194,7 +172,7 @@ def min_limit_freqs(meta_df: pd.DataFrame) -> None:
     Arguments:
     meta_df -- 
     '''
-    img_freqs = get_frequencies(np.array(meta_df['NShrimp']))
+    img_freqs = Counter(np.array(meta_df['NShrimp']))
     img_total = sum(img_freqs.values())
     n_shrimp_groups = len(img_freqs.keys())
     exp_prop = 1 / n_shrimp_groups
@@ -230,29 +208,44 @@ def save_model(model_dir: pathlib.Path, model: tf.keras.models.Sequential, model
     return
 
 
-def unfreeze_blocks(model: tf.keras.models.Sequential, target_conv_id: str=None, target_block_id: str=None):
-    # The first "layer" in our model is resent50, get it here
-    resnet50 = model.layers[0]
-    # First layer is input, last layer is avg pooling
-    conv_layers = resnet50[1:-1].layers
-    for layer in conv_layers:
-        layer_name_parts = layer.name.split('_')
-        conv_id = None
-        block_id = None
-        other = None  # Catch all for stuff between
-        layer_type = None
-        if len(layer_name_parts) == 2:
-            conv_id, layer_type = layer_name_parts
-        elif len(layer_name_parts) >= 3:
-            conv_id, block_id, *other, layer_type = layer_name_parts
-        else:
-            raise ValueError(f'Unexpected layer name {layer.name} with < 2 parts')
+# def unfreeze_blocks(model: tf.keras.models.Sequential, target_conv_id: str=None, target_block_id: str=None):
+#     # The first "layer" in our model is resent50, get it here
+#     resnet50 = model.layers[0]
+#     # First layer is input, last layer is avg pooling
+#     conv_layers = resnet50[1:-1].layers
+#     for layer in conv_layers:
+#         layer_name_parts = layer.name.split('_')
+#         conv_id = None
+#         block_id = None
+#         other = None  # Catch all for stuff between
+#         layer_type = None
+#         if len(layer_name_parts) == 2:
+#             conv_id, layer_type = layer_name_parts
+#         elif len(layer_name_parts) >= 3:
+#             conv_id, block_id, *other, layer_type = layer_name_parts
+#         else:
+#             raise ValueError(f'Unexpected layer name {layer.name} with < 2 parts')
 
-        # Switch on target layers, switch off other layers
-        if conv_id == target_conv_id and block_id == target_block_id:
-            layer.trainable = True
-        else:
-            layer.trainable = False
+#         # Switch on target layers, switch off other layers
+#         if conv_id == target_conv_id and block_id == target_block_id:
+#             layer.trainable = True
+#         else:
+#             layer.trainable = False
+#     return
+
+
+def true_round(value: float) -> int:
+    '''Round to the nearest whole number (>0.5 -> 1), NOT using bankers rounding
+    like python's builtin round function.
+    '''
+    return value // 1 + int((value % 1) > 0.5)
+
+
+def plt_clear() -> None:
+    '''Clear the axis and figure.'''
+    plt.cla()
+    plt.clf()
+    plt.close('all')
     return
 
 
@@ -282,9 +275,9 @@ img_arrays, img_labels = get_img_data(meta_df, cropping=Settings.crop_glare)
 
 # Weight less frequent labels as more important
 label_weights = get_weights(img_labels, max_weight=Settings.max_weight)
-# # Print out the weights for each label
-for label, weight in label_weights.items():
-    print(f'{label}: {weight:.2f}x')
+# Print out tshe weights for each label
+# for label, weight in label_weights.items():
+#     print(f'{label}: {weight:.2f}x')
 
 # Shuffle array of indices
 img_indices = np.arange(len(img_arrays))
@@ -303,7 +296,7 @@ model = construct_model(input_shape)
 # Compile the model
 compile_model(model)
 
-model.summary()
+# model.summary()
 
 # Path for saving this the training log for this model
 in_progress_dir = pathlib.Path('Models', 'InProgress')
@@ -333,6 +326,7 @@ model.fit(preprocess_input(X_train),
 # Now that the model has finished training, we can compute its hash
 # which acts as a unique ID for this model's "brain"
 model_hash = hex(hash(model))
+print(model_hash)
 
 # Save the model
 model_dir = pathlib.Path('Models', model_hash)
@@ -369,4 +363,99 @@ save_settings(settings_file,
               )
 
 
-print(model_hash)
+# Save a histogram of the data the model was trained on
+plt.hist(y_train, bins=np.unique(y_train))
+plt.xlabel('Number of Visible Shrimp')
+plt.ylabel('Frequency')
+plt.savefig(model_dir / 'train-nvs-hist.png')
+plt_clear()
+
+
+# Save a histogram of the data the model will be tested on
+plt.hist(y_test, bins=np.unique(y_test))
+plt.xlabel('Number of Visible Shrimp')
+plt.ylabel('Frequency')
+plt.savefig(model_dir / 'test-nvs-hist.png')
+plt_clear()
+
+
+# Get the model's predictions on X_test
+y_pred = np.round(model.predict(preprocess_input(X_test))).flatten()
+# Save a histogram of the model's predictions
+plt.hist(y_pred, bins=np.unique(y_pred))
+plt.xlabel('Predicted Number of Visible Shrimp')
+plt.ylabel('Frequency')
+plt.savefig(model_dir / 'pred-hist.png')
+plt_clear()
+
+
+# Calculate by how much each guess is off, then count the frequencies
+# of these differences
+y_err = y_pred - y_test
+# Save a histogram of the model's prediction errors
+pred_err_bins = [-3, -2, -1, 0, 1, 2, 3]
+plt.hist(pred_err_bins, bins=pred_err_bins)
+plt.xticks(pred_err_bins)
+max_height = max(Counter(y_err).values())
+step = max(int(max_height / 3), 1)
+plt.yticks(range(0,max_height+step,step))
+plt.xlabel('Predicted Number of Visible Shrimp')
+plt.ylabel('Frequency')
+plt.savefig(model_dir / 'pred-err-hist.png')
+plt_clear()
+
+
+# Get the models predictions and prediction errors, grouped by the true
+# number of shrimp for each prediction
+y_pred_by_true = {}
+y_err_by_true = {}
+for usc in np.unique(y_test):
+    # Get all predicted values for images with this many shrimp in them
+    y_pred_by_true[usc] = y_pred[y_test == usc]
+    # Get all prediction errors for images with this many shrimp in them
+    y_err_by_true[usc] = y_err[y_test == usc]
+
+# Save a histogram for the distribution of predictions for each true
+# number of visible shrimp
+for true_nvs, pred_nvs in y_pred_by_true.items():
+    unique_preds = np.unique(pred_nvs)
+    plt.hist(pred_nvs, bins=unique_preds)
+    plt.xticks(unique_preds)
+    max_height = max(Counter(pred_nvs).values())
+    step = max(int(max_height / 3), 1)
+    plt.yticks(range(0,max_height+step,step))
+    plt.xlabel('Predicted Number of Visible Shrimp')
+    plt.ylabel('Frequency')
+    plt.savefig(model_dir / f'pred-nvs_{true_nvs}-hist.png')
+    plt_clear()
+
+# Save a histogram for the distribution of prediction errors for each
+# true number of visible shrimp
+for true_nvs, pred_nvs_errs in y_err_by_true.items():
+    plt.hist(pred_nvs_errs, bins=pred_err_bins)
+    plt.xticks(pred_err_bins)
+    max_height = max(Counter(pred_nvs_errs).values())
+    step = max(int(max_height / 3), 1)
+    plt.yticks(range(0,max_height+step,step))
+    plt.xlabel('Predicted NVS Error')
+    plt.ylabel('Frequency')
+    plt.savefig(model_dir / f'pred-err-nvs_{true_nvs}-hist.png')
+    plt_clear()
+
+
+# Histogram of average prediction error for each image label
+avg_diff = [sum(errs)/len(errs) for errs in y_err_by_true.values()]
+se_diff = [stats.sem(errs) for errs in y_err_by_true.values()]
+plt.bar(y_err_by_true.keys(), avg_diff)
+# Add error bars using SE
+plt.errorbar(y_err_by_true.keys(), avg_diff, yerr=se_diff, fmt='.', color='r', capsize=8)
+# Label bars with number of predictions represented
+for true_nvs, errs in y_err_by_true.items():
+    avg = sum(errs)/len(errs)
+    plt.text(true_nvs-0.1, 0.2 if avg < 0 else -0.2, f'N={len(errs)}')
+plt.xlabel('Number of Visible Shrimp')
+plt.ylabel('Additional NVS Predicted')
+plt.xticks(np.unique(y_train))
+plt.tight_layout()
+plt.savefig(model_dir / f'avg-pred-err.png')
+plt_clear()
