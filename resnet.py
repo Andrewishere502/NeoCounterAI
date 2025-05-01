@@ -7,7 +7,7 @@ tf.keras.applications.resnet.preprocess_input
 import datetime
 import pathlib
 import json
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 from collections import Counter
 
 import numpy as np
@@ -23,7 +23,7 @@ from tensorflow.keras.layers import Dense # type: ignore
 from scipy import stats
 
 from settings import Settings, save_settings
-from enhancements import crop_img
+from enhancements import crop_img, randcrop_img
 
 
 # Set random seeds for numpy, python, and keras backend
@@ -34,7 +34,7 @@ tf.keras.utils.set_random_seed(Settings.seed)
 # Dataset functions
 ###
 
-def get_img_data(meta_df: pd.DataFrame, cropping: bool=True) -> Tuple[np.ndarray, np.ndarray]:
+def get_img_data(meta_df: pd.DataFrame, cropping: bool, rand_crop_n: int, rand_crop_width: int, rand_crop_height:int) -> Tuple[np.ndarray, np.ndarray]:
     '''Return an array of each image as a 2D array of pixels, and an
     array of labels corresponding to each image. Before returning each
     image, crop it to remove the glare on the right of each image.
@@ -43,6 +43,9 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool=True) -> Tuple[np.ndarray
     meta_df -- 
     cropping -- Whether or not to crop the image to remove glare from
                 the right side
+    rand_crop_n -- 
+    rand_crop_width -- 
+    rand_crop_height -- 
     '''
     # Load in the image arrays and the number of shrimp in them
     img_arrays = []
@@ -60,36 +63,66 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool=True) -> Tuple[np.ndarray
         # load in the image
         img_array = plt.imread(img_path)
 
+        # Original image's number of shrimp
+        n_shrimp = int(labeled_row['NShrimp'])
+        # Crop image to remove glare if specified
         if cropping:
             # Crop the image to remove glare from the right
             new_width = 240
             new_height = 240
-            img_array = crop_img(img_array, 0, new_height-1, 0, new_width-1)
+            img_array = crop_img(img_array, 0, 0, new_width, new_height)
             
             # Recount the shrimp in this image
-            shrimp_positions = labeled_row['ShrimpPos'][1:-1].split(')(')
-            shrimp_positions = [tuple(map(int, pos.split(' '))) for pos in shrimp_positions]
-            n_shrimp = 0
-            for pos in shrimp_positions:
-                if pos[0] < new_width and pos[1] < new_height:
-                    n_shrimp += 1
-            img_labels.append(n_shrimp)
-        else:
-            # Don't modify the image shape
-            img_labels.append(labeled_row['NShrimp'])
+            shrimp_pos = parse_shrimp_pos(labeled_row['ShrimpPos'])
+            n_shrimp = recount_shrimp(shrimp_pos, 0, 0, new_width, new_height)
 
-        # Add the image array and its label to
-        # their respective lists
-        img_arrays.append(img_array)
+        # Option to subset images randomly into multiple smaller images
+        if rand_crop_n > 0:
+            # Create rand_crop_n randomly cropped images from the img_array,
+            # and add those to img_arrays instead. Also recount the shrimp
+            # in the image to add that to img_labels.
+            for _ in range(rand_crop_n):
+                # Subset the image
+                x_offset, y_offset, sub_img_array = randcrop_img(img_array, rand_crop_width, rand_crop_height)
+                
+                # Recount the shrimp in the image
+                shrimp_pos = parse_shrimp_pos(labeled_row['ShrimpPos'])
+                n_shrimp = recount_shrimp(shrimp_pos, x_offset, y_offset, rand_crop_width, rand_crop_height)
+
+                # Save the cropped image and its label
+                img_arrays.append(sub_img_array)
+                img_labels.append(n_shrimp)
+        else:
+            # Add the image array and its label to
+            # their respective lists
+            img_arrays.append(img_array)
+            img_labels.append(n_shrimp)
         
         # Display progress bar
         print(f'\r{len(img_arrays)} of {len(meta_df)} loaded', end='')
-    print()
 
     # Convert img_arrays and img_labels from lists to arrays
     img_arrays = np.array(img_arrays)
-    img_labels = np.array(img_labels, dtype=int)
+    img_labels = np.array(img_labels)
     return (img_arrays, img_labels)
+
+
+def parse_shrimp_pos(shrimp_pos_str: str) -> List[Tuple[int, int]]:
+    '''Parse the coordinates for a shrimp as in the ShrimpPos column.'''
+    shrimp_positions = shrimp_pos_str[1:-1].split(')(')
+    shrimp_positions = [tuple(map(int, pos.split(' '))) for pos in shrimp_positions]
+    return shrimp_positions
+
+
+def recount_shrimp(shrimp_pos: List[Tuple[int, int]], x_offset: int, y_offset: int, width: int, height: int):
+    '''Count the number of shrimp that are within the new image.'''
+    n_shrimp = 0
+    for pos in shrimp_pos:
+        x_in_img = (pos[0] >= x_offset and pos[0] < x_offset + width)
+        y_in_img = (pos[1] >= y_offset and pos[1] < y_offset + height)
+        if x_in_img and y_in_img:
+            n_shrimp += 1
+    return n_shrimp
 
 
 def max_limit_freqs(meta_df: pd.DataFrame) -> None:
@@ -152,12 +185,9 @@ def construct_model(input_shape: Tuple[int, int, int]) -> Sequential:
                         include_top=False,
                         pooling='avg'
                         )
+    # Disable training of resnet layers
     resnet50.trainable = False
     model.add(resnet50)
-    # Make resnet layers untrainable
-    # for layer in model.layers:
-    #     layer.trainable = False
-    model.summary()
 
     # Add the final dense layer to do the actual regression
     model.add(Dense(units=1,  # Number of neurons
@@ -175,7 +205,6 @@ def compile_model(model: Sequential) -> None:
     metrics = [
         tf.keras.metrics.MeanSquaredError()
         ]
-    # loss = MeanPowError(6)  # x ** 6
     model.compile(
         optimizer=optimizer,
         loss=loss,
@@ -267,10 +296,20 @@ if Settings.lim_max_prop:
     del total_imgs
 
 # Load the image data
-img_arrays, img_labels = get_img_data(meta_df, cropping=Settings.crop_glare)
+img_arrays, img_labels = get_img_data(meta_df,
+                                      Settings.crop_glare,
+                                      Settings.rand_crop_n,
+                                      Settings.rand_crop_width,
+                                      Settings.rand_crop_height)
 
 # Split data into training and testing sets, 80/20
 X_train, X_test, y_train, y_test = train_test_split(img_arrays, img_labels, train_size=0.80)
+
+
+# for img in X_train:
+#     plt.imshow(img)
+#     plt.show()
+
 
 # Load the model architecture
 input_shape = img_arrays[0].shape
@@ -306,6 +345,7 @@ early_stop = EarlyStopping(min_delta=Settings.min_delta,
 # Train the model
 model.fit(preprocess_input(X_train),
           y_train,
+          batch_size=64,
           validation_split=Settings.validation_split,
           class_weight=get_weights(img_labels, max_weight=Settings.max_weight),
           epochs=Settings.epochs,
@@ -334,8 +374,7 @@ save_settings(settings_file,
               Settings,
               date_trained=date_trained,
               time_trained=time_trained,
-              model_hash=model_hash,
-              loss_function=model.loss.name
+              model_hash=model_hash
               )
 
 
@@ -372,10 +411,10 @@ plt_clear()
 # Calculate by how much each guess is off, then count the frequencies
 # of these differences
 y_err = y_pred - y_test
+err_bins = [-3, -2, -1, 0, 1, 2, 3]
 # Save a histogram of the model's prediction errors
-pred_err_bins = [-3, -2, -1, 0, 1, 2, 3]
-plt.hist(y_err, bins=pred_err_bins)
-plt.xticks(pred_err_bins)
+plt.hist(y_err, bins=err_bins)
+plt.xticks(err_bins)
 max_height = max(Counter(y_err).values())
 step = max(int(max_height / 3), 1)
 plt.yticks(range(0,max_height+step,step))
@@ -397,11 +436,11 @@ for usc in np.unique(y_test):
 
 
 # Histogram of average prediction error for each image label
-avg_diff = [sum(errs)/len(errs) for errs in y_err_by_true.values()]
-se_diff = [stats.sem(errs) for errs in y_err_by_true.values()]
-plt.bar(y_err_by_true.keys(), avg_diff)
+avg_err = [sum(errs)/len(errs) for errs in y_err_by_true.values()]
+se_err = [stats.sem(errs) for errs in y_err_by_true.values()]
+plt.bar(y_err_by_true.keys(), avg_err)
 # Add error bars using SE
-plt.errorbar(y_err_by_true.keys(), avg_diff, yerr=se_diff, fmt='.', color='r', capsize=8)
+plt.errorbar(y_err_by_true.keys(), avg_err, yerr=se_err, fmt='.', color='r', capsize=8)
 # Label bars with number of predictions represented
 for true_nvs, errs in y_err_by_true.items():
     avg = sum(errs)/len(errs)
@@ -409,6 +448,7 @@ for true_nvs, errs in y_err_by_true.items():
 plt.xlabel('Number of Visible Shrimp')
 plt.ylabel('Additional NVS Predicted')
 plt.xticks(np.unique(y_train))
+plt.yticks(err_bins)
 plt.tight_layout()
 plt.savefig(model_dir / f'avg-pred-err.png')
 plt_clear()

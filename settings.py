@@ -18,9 +18,14 @@ class Settings:
     # Whether or not to crop out the glare from the right side of each
     # image
     crop_glare = True
+    # How many randomly cropped images to create from each base image.
+    # 0 disables this functionality
+    rand_crop_n = 0
+    rand_crop_width = 200   # Unused if rand_crop_n = 0
+    rand_crop_height = 200  # Unused if rand_crop_n = 0
 
     # Consts for model.fit()
-    epochs: int = 0
+    epochs: int = 50
     min_delta: float = 0.01
     patience: int = 1
     max_weight: float = None #1.0
