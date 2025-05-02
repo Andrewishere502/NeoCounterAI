@@ -213,6 +213,18 @@ def compile_model(model: Sequential) -> None:
     return
 
 
+def fit_model(model: Sequential, callbacks, validation_split: float, epochs: int, max_weight: float):
+    # Train the model
+    model.fit(preprocess_input(X_train),
+            y_train,
+            validation_split=validation_split,
+            class_weight=get_weights(img_labels, max_weight=max_weight),
+            epochs=epochs,
+            callbacks=callbacks
+            )
+    return
+
+
 def get_weights(array: np.ndarray[Any], max_weight: float=None) -> Dict[Any, np.float32]:
     '''Return weights for all unique values within an array as a
     dict, where the key is the unique value and the value (paired with
@@ -234,30 +246,30 @@ def get_weights(array: np.ndarray[Any], max_weight: float=None) -> Dict[Any, np.
     return weights
 
 
-# def unfreeze_blocks(model: Sequential, target_conv_id: str=None, target_block_id: str=None):
-#     # The first "layer" in our model is resent50, get it here
-#     resnet50 = model.layers[0]
-#     # First layer is input, last layer is avg pooling
-#     conv_layers = resnet50[1:-1].layers
-#     for layer in conv_layers:
-#         layer_name_parts = layer.name.split('_')
-#         conv_id = None
-#         block_id = None
-#         other = None  # Catch all for stuff between
-#         layer_type = None
-#         if len(layer_name_parts) == 2:
-#             conv_id, layer_type = layer_name_parts
-#         elif len(layer_name_parts) >= 3:
-#             conv_id, block_id, *other, layer_type = layer_name_parts
-#         else:
-#             raise ValueError(f'Unexpected layer name {layer.name} with < 2 parts')
+def isolate_block(model: Sequential, target_conv_id: str, target_block_id: str=None):
+    # The first "layer" in our model is resent50, get it here
+    resnet50 = model.layers[0]
+    # First layer is input, last layer is avg pooling
+    conv_layers = resnet50.layers[1:-1]
+    for layer in conv_layers:
+        layer_name_parts = layer.name.split('_')
+        conv_id = None
+        block_id = None
+        other = None  # Catch all for stuff between
+        layer_type = None
+        if len(layer_name_parts) == 2:
+            conv_id, layer_type = layer_name_parts
+        elif len(layer_name_parts) >= 3:
+            conv_id, block_id, *other, layer_type = layer_name_parts
+        else:
+            raise ValueError(f'Unexpected layer name {layer.name} with < 2 parts')
 
-#         # Switch on target layers, switch off other layers
-#         if conv_id == target_conv_id and block_id == target_block_id:
-#             layer.trainable = True
-#         else:
-#             layer.trainable = False
-#     return
+        # Switch on target layers, switch off other layers
+        if conv_id == target_conv_id and (block_id == target_block_id or target_block_id == None):
+            layer.trainable = True
+        else:
+            layer.trainable = False
+    return
 
 
 def true_round(value: float) -> int:
@@ -335,22 +347,34 @@ with open(model_dir / 'compile_config.json', 'w') as file:
 # Training logger callback, saves information about each epoch
 # as training progresses
 csv_logger = CSVLogger(model_dir / 'training.log')
-
 # Early stopping callback, terminating training if no progress is
 # actually being made
 early_stop = EarlyStopping(min_delta=Settings.min_delta,
                            patience=Settings.patience,
                            restore_best_weights=Settings.restore_best_weights)
+callbacks = [csv_logger, early_stop]
 
-# Train the model
-model.fit(preprocess_input(X_train),
-          y_train,
-          batch_size=64,
-          validation_split=Settings.validation_split,
-          class_weight=get_weights(img_labels, max_weight=Settings.max_weight),
-          epochs=Settings.epochs,
-          callbacks=[csv_logger, early_stop]
-          )
+# model.summary()
+
+fit_model(model,
+          callbacks,
+          Settings.validation_split,
+          Settings.epochs,
+          Settings.max_weight)
+
+
+if Settings.retrain_conv:
+    # Retrain the cnn layers in reverse order
+    for conv_id in ['conv5', 'conv4', 'conv3', 'conv2', 'conv1']:
+        print(f'Isolating conv block {conv_id}')
+        # Isolate one conv layer at a time
+        isolate_block(model, conv_id)
+        fit_model(model,
+                  callbacks,
+                  Settings.validation_split,
+                  Settings.epochs,
+                  Settings.max_weight)
+
 
 # Now that the model has finished training, we can compute its hash
 # which acts as a unique ID for this model's "brain"
@@ -367,15 +391,23 @@ model.save(model_file)
 
 # Save the settings for this model in the same place the model was
 # stored
-settings_file = model_dir / 'settings.txt'
 date_trained = datetime.datetime.now().strftime('%Y/%m/%d')
 time_trained = datetime.datetime.now().strftime('%H:%M:%S')
-save_settings(settings_file,
+save_settings(model_dir / 'settings.txt',
               Settings,
               date_trained=date_trained,
               time_trained=time_trained,
               model_hash=model_hash
               )
+
+
+# Plot MSE to epoch
+training_df = pd.read_csv(model_dir / 'training.log')
+plt.plot(training_df['epoch'], training_df['mean_squared_error'])
+plt.plot(training_df['epoch'], training_df['val_mean_squared_error'])
+plt.legend(['Training', 'Testing'])
+plt.savefig(model_dir / 'mse-plot.png')
+plt_clear()
 
 
 # Save a histogram of the data the model was trained on

@@ -32,6 +32,9 @@ class Settings:
     validation_split: float = 0.125  # Portion of training data to use as validation
     restore_best_weights = False
 
+    # Whether or not to retrain the resnet layers
+    retrain_conv = False
+
     @classmethod
     def modify(cls, **kwargs):
         '''Modify the setting values'''
