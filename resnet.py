@@ -606,15 +606,38 @@ stats_file = model_dir / 'stats.txt'
 # Good old fashioned accuracy, although this is an odd metric for a
 # regression
 with open(stats_file, 'a') as file:
-    file.write('Dataset Descriptive Stats:\n')
-    file.write(f'Mean {np.mean(img_labels)}\n')
-    file.write(f'Median {np.median(img_labels)}\n')
-    file.write(f'STD {np.std(img_labels)}\n')
-    file.write(f'SE {stats.sem(img_labels)}\n')
+    file.write('Overall Dataset Descriptive Stats:\n')
+    file.write(f'N: {len(img_labels)}\n')
+    file.write(f'Mean {np.mean(img_labels):.3g}\n')
+    file.write(f'Median {np.median(img_labels):.3g}\n')
+    file.write(f'STD {np.std(img_labels):.3g}\n')
+    file.write(f'SE {stats.sem(img_labels):.3g}\n\n')
+
+    file.write('Prediction Statistics:\n')
+    for true_nvs, pred_nvs in y_pred_by_true.items():
+        file.write(f'NVS={true_nvs}\n')
+        file.write(f'\tN: {len(pred_nvs)}\n')
+        file.write(f'\tMean: {np.mean(pred_nvs):.3g}\n')
+        file.write(f'\tMin: {np.min(pred_nvs):.3g}\n')
+        file.write(f'\tMax: {np.max(pred_nvs):.3g}\n')
+        file.write(f'\tMedian: {np.median(pred_nvs):.3g}\n')
+        file.write(f'\tSTD: {np.std(pred_nvs):.3g}\n')
+        file.write(f'\tSE: {stats.sem(pred_nvs):.3g}\n')
+    file.write('\n')
+
+    file.write('Prediction Error Statistics:\n')
+    for true_nvs, err in y_err_by_true.items():
+        file.write(f'NVS={true_nvs}\n')
+        file.write(f'\tN: {len(err)}\n')
+        file.write(f'\tMean: {np.mean(err):.3g}\n')
+        file.write(f'\tMedian: {np.median(err):.3g}\n')
+        file.write(f'\tSTD: {np.std(err):.3g}\n')
+        file.write(f'\tSE: {stats.sem(err):.3g}\n')
+    file.write('\n')
 
     # Conduct shapiro-wilk's test
     shap_results = stats.shapiro(img_labels)
-    file.write(f'Shapiro test; statistic = {shap_results.statistic}, p-value = {shap_results.pvalue}\n')
+    file.write(f'Shapiro test; statistic = {shap_results.statistic:.3g}, p-value = {shap_results.pvalue:.3g}\n')
     file.write(f'Normally distributed: {shap_results.pvalue >= 0.05}\n\n')
 
     # Good old fashioned accuracy, although this is an odd metric for a
@@ -627,14 +650,15 @@ with open(stats_file, 'a') as file:
     ttest_result = stats.ttest_rel(y_pred, y_test)
     paired_t_p = ttest_result.pvalue
     file.write('Paired t-test assuming equal variance:\n')
-    file.write(f'Paired t-test; pvalue = {paired_t_p:.2e}, df = {ttest_result.df}\n\n')
+    file.write(f'Paired t-test; pvalue = {paired_t_p:.3g}, df = {ttest_result.df}\n\n')
 
     # ANOVA to see if any image labels are predicted differently than
     # others, on average
     anova_result = stats.f_oneway(*y_err_by_true.values())
     anova_stat = anova_result.statistic
     anova_p = anova_result.pvalue
-    file.write(f'ANOVA; statistic = {anova_stat:.2e}, pvalue = {anova_p:.2e}\n\n')
+    file.write('ANOVA:\n')
+    file.write(f'ANOVA; statistic = {anova_stat:.3g}, pvalue = {anova_p:.3g}\n\n')
 
     # Regression to determine if there is a significant relationship
     # (positive or negative) between the true NVS in an image and the
@@ -646,4 +670,4 @@ with open(stats_file, 'a') as file:
     reg_m = reg_result.slope
     reg_b = reg_result.intercept
     file.write('Least-squares regression:\n')
-    file.write(f'Linear regression; pvalue = {reg_p:.2e}, slope = {reg_m:.2e}, intercept = {reg_b:.2e}\n\n')
+    file.write(f'Linear regression; pvalue = {reg_p:.3g}, slope = {reg_m:.3g}, intercept = {reg_b:.3g}\n\n')
