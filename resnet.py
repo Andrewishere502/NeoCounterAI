@@ -7,7 +7,7 @@ tf.keras.applications.resnet.preprocess_input
 import datetime
 import pathlib
 import json
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, Callable
 from collections import Counter
 
 import numpy as np
@@ -329,14 +329,27 @@ def make_img_grid(nrows: int, ncols: int, img_arrays: np.ndarray, y_true: np.nda
     fig, axs = plt.subplots(nrows=nrows, ncols=ncols)#, figsize=(2 * nrows, int(1.2 * ncols)))
     n_imgs = nrows * ncols
     img_is = np.random.choice(np.arange(n_imgs), size=n_imgs, replace=False)
-    for i in img_is:
-        if i == len(img_arrays):
+    for ax_i, img_i in enumerate(img_is):
+        if ax_i == len(img_arrays):
             break
-        axs[i//ncols][i%ncols].imshow(img_arrays[i])
-        axs[i//ncols][i%ncols].set_title(f'{y_pred[i]} | {y_true[i]}')
-        axs[i//ncols][i%ncols].axis('off')
+        # Apply a filter inverting the image colors
+        img = img_arrays[img_i]
+        axs[ax_i//ncols][ax_i%ncols].imshow(img)
+        axs[ax_i//ncols][ax_i%ncols].set_title(f'{y_pred[img_i]} | {y_true[img_i]}')
+        axs[ax_i//ncols][ax_i%ncols].axis('off')
     fig.tight_layout()
     return fig, axs
+
+
+def apply_img_filter(px_filter: Callable, img: np.ndarray) -> np.ndarray:
+    '''Apply a per-pixel filter to the image and return it.
+
+    Arguments:
+    img_filter -- Filter that acts on individual pixels
+    img -- Image to which to apply a filter
+    '''
+    filtered_image = np.apply_along_axis(px_filter, axis=2, arr=img)
+    return filtered_image
 
 
 def plt_clear() -> None:
@@ -586,6 +599,20 @@ plt_clear()
 ####
 
 stats_file = model_dir / 'stats.txt'
+
+# Good old fashioned accuracy, although this is an odd metric for a
+# regression
+with open(stats_file, 'a') as file:
+    file.write('Dataset Descriptive Stats:\n')
+    file.write(f'Mean {np.mean(img_labels)}\n')
+    file.write(f'Median {np.median(img_labels)}\n')
+    file.write(f'STD {np.std(img_labels)}\n')
+    file.write(f'SE {stats.sem(img_labels)}\n')
+
+    shap_results = stats.shapiro(img_labels)
+    file.write(f'Shapiro test; statistic = {shap_results.statistic}, p-value = {shap_results.pvalue}\n')
+    file.write(f'Normally distributed: {shap_results.pvalue >= 0.05}')
+
 
 # Good old fashioned accuracy, although this is an odd metric for a
 # regression
