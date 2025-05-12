@@ -613,31 +613,27 @@ with open(stats_file, 'a') as file:
     file.write(f'Shapiro test; statistic = {shap_results.statistic}, p-value = {shap_results.pvalue}\n')
     file.write(f'Normally distributed: {shap_results.pvalue >= 0.05}')
 
-
-# Good old fashioned accuracy, although this is an odd metric for a
-# regression
-with open(stats_file, 'a') as file:
+    # Good old fashioned accuracy, although this is an odd metric for a
+    # regression
     file.write('Accuracy:\n')
     file.write(f'{sum(y_err == 0)} / {len(y_err)} = {sum(y_err == 0) / len(y_err)}\n\n')
 
-
-# Paired t-test to determine if predicted n shrimp is statistically
-# different from true n shrimp, on average
-ttest_result = stats.ttest_rel(y_pred, y_test)
-paired_t_p = ttest_result.pvalue
-with open(stats_file, 'a') as file:
+    # Paired t-test to determine if predicted n shrimp is statistically
+    # different from true n shrimp, on average
+    ttest_result = stats.ttest_rel(y_pred, y_test)
+    paired_t_p = ttest_result.pvalue
     file.write('Paired t-test assuming equal variance:\n')
     file.write(f'Paired t-test; pvalue = {paired_t_p:.2e}, df = {ttest_result.df}\n\n')
 
-# Regression to determine if there is a significant relationship
-# (positive or negative) between the true Number of Visible Shrimp in
-# an image and the model's prediction error. If significant, this would
-# suggest the model is specializing in identifying 4 shrimp in an image
-# and not generalizing as well.
-reg_result = stats.linregress(y_err, y_test)
-reg_p = reg_result.pvalue
-reg_m = reg_result.slope
-reg_b = reg_result.intercept
-with open(stats_file, 'a') as file:
+
+    # Regression to determine if there is a significant relationship
+    # (positive or negative) between the true Number of Visible Shrimp in
+    # an image and the model's prediction error. If significant, this would
+    # suggest the model is specializing in identifying 4 shrimp in an image
+    # and not generalizing as well.
+    reg_result = stats.linregress(y_err, y_test)
+    reg_p = reg_result.pvalue
+    reg_m = reg_result.slope
+    reg_b = reg_result.intercept
     file.write('Least-squares regression:\n')
     file.write(f'Linear regression; pvalue = {reg_p:.2e}, slope = {reg_m:.2e}, intercept = {reg_b:.2e}\n\n')
