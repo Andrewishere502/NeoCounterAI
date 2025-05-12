@@ -1,0 +1,15 @@
+Dataset Descriptive Stats:
+Mean 2.8459434822242478
+Median 3.0
+STD 1.5177360582379764
+SE 0.04584489423127088
+Shapiro test; statistic = 0.9512350175696755, p-value = 1.3198775475250506e-18
+Normally distributed: FalseAccuracy:
+98 / 220 = 0.44545454545454544
+
+Paired t-test assuming equal variance:
+Paired t-test; pvalue = 3.43e-01, df = 219
+
+Least-squares regression:
+Linear regression; pvalue = 1.06e-08, slope = -6.18e-01, intercept = 3.04e+00
+
