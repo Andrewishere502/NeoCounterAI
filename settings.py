@@ -29,7 +29,7 @@ class Settings:
     min_delta: float = 0.01
     patience: int = 1
     max_weight: float = None #1.0
-    validation_split: float = 0.125  # Portion of training data to use as validation
+    validation_split: float = 0.10  # Portion of training data to use as validation
     restore_best_weights = False
 
     # Whether or not to retrain the resnet layers

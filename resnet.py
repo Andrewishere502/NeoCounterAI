@@ -13,6 +13,8 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.applications.resnet import preprocess_input # type: ignore
@@ -63,8 +65,15 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool, rand_crop_n: int, rand_c
         # load in the image
         img_array = plt.imread(img_path)
 
+        # Location of shrimp in the original image
+        shrimp_pos_str = labeled_row['ShrimpPos']
+        # Convert shrimp pos to empty string if it's nan (float)
+        if pd.isna(shrimp_pos_str):
+            shrimp_pos_str = ''
+
         # Original image's number of shrimp
         n_shrimp = int(labeled_row['NShrimp'])
+
         # Crop image to remove glare if specified
         if cropping:
             # Crop the image to remove glare from the right
@@ -73,7 +82,7 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool, rand_crop_n: int, rand_c
             img_array = crop_img(img_array, 0, 0, new_width, new_height)
             
             # Recount the shrimp in this image
-            shrimp_pos = parse_shrimp_pos(labeled_row['ShrimpPos'])
+            shrimp_pos = parse_shrimp_pos(shrimp_pos_str)
             n_shrimp = recount_shrimp(shrimp_pos, 0, 0, new_width, new_height)
 
         # Option to subset images randomly into multiple smaller images
@@ -86,7 +95,7 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool, rand_crop_n: int, rand_c
                 x_offset, y_offset, sub_img_array = randcrop_img(img_array, rand_crop_width, rand_crop_height)
                 
                 # Recount the shrimp in the image
-                shrimp_pos = parse_shrimp_pos(labeled_row['ShrimpPos'])
+                shrimp_pos = parse_shrimp_pos(shrimp_pos_str)
                 n_shrimp = recount_shrimp(shrimp_pos, x_offset, y_offset, rand_crop_width, rand_crop_height)
 
                 # Save the cropped image and its label
@@ -100,6 +109,7 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool, rand_crop_n: int, rand_c
         
         # Display progress bar
         print(f'\r{len(img_arrays)} of {len(meta_df)} loaded', end='')
+    print()  # Just print a new line
 
     # Convert img_arrays and img_labels from lists to arrays
     img_arrays = np.array(img_arrays)
@@ -109,6 +119,11 @@ def get_img_data(meta_df: pd.DataFrame, cropping: bool, rand_crop_n: int, rand_c
 
 def parse_shrimp_pos(shrimp_pos_str: str) -> List[Tuple[int, int]]:
     '''Parse the coordinates for a shrimp as in the ShrimpPos column.'''
+    # If no shrimp positions, return an empty list
+    if shrimp_pos_str == '':
+        return []
+
+    # Only parse positions now that there is at least one shrimp
     shrimp_positions = shrimp_pos_str[1:-1].split(')(')
     shrimp_positions = [tuple(map(int, pos.split(' '))) for pos in shrimp_positions]
     return shrimp_positions
@@ -125,7 +140,44 @@ def recount_shrimp(shrimp_pos: List[Tuple[int, int]], x_offset: int, y_offset: i
     return n_shrimp
 
 
-def max_limit_freqs(meta_df: pd.DataFrame) -> None:
+def min_limit_freqs(img_arrays: np.ndarray, img_labels: np.ndarray) -> None:
+    '''Remove images from img_arrays if they are part of a label group
+    that does not occur at a minimum frequency within the dataset. This
+    does not modify img_arrays in place! img_arrays seems to be
+    protected from being modified inside this function
+    
+    Arguments:
+    img_arrays -- An array of images
+    img_labels -- An array of image labels, corresponding
+                  to each index in img_arrays
+    '''
+    # How many images belong to each group
+    img_freqs = Counter(np.array(img_labels))
+    # Total number of images in the dataset
+    total_imgs = sum(img_freqs.values())
+    # Number of label groups
+    n_groups = len(img_freqs.keys())
+    # Expected proportion of images in a group if the data was
+    # uniformly distributed
+    exp_prop = 1 / n_groups
+    for n_shrimp, img_count in img_freqs.items():
+        # Calculate proportion images with this label
+        img_prop = img_count / total_imgs
+        # If this label is only represented by one-tenth the expected
+        # images, then 
+        if img_prop < exp_prop * 1/10:
+            # Get indices for images which are *not* part of the
+            # critically under-represented group
+            keep_is = img_labels != n_shrimp
+            # Filter to include only images that don't have this label
+            img_arrays = img_arrays[keep_is]
+            # Filter labels
+            img_labels = img_labels[keep_is]
+            print(f'\tRemoved {len(keep_is) - len(img_arrays)} images with label {n_shrimp}')
+    return img_arrays, img_labels
+
+
+def max_limit_freqs(meta_df: pd.DataFrame) -> pd.DataFrame:
     '''Return a copy of the dataframe with ...
     
     Arguments:
@@ -148,26 +200,6 @@ def max_limit_freqs(meta_df: pd.DataFrame) -> None:
             # Choose which indices to remove
             rm_is = np.random.choice(img_group_is, size=(rm_imgs,))
             # Extend list of indices to drop
-            all_rm_is.extend(rm_is)
-    return meta_df.drop(index=all_rm_is)
-
-
-def min_limit_freqs(meta_df: pd.DataFrame) -> None:
-    '''Return a copy of the dataframe with ...
-    
-    Arguments:
-    meta_df -- 
-    '''
-    img_freqs = Counter(np.array(meta_df['NShrimp']))
-    img_total = sum(img_freqs.values())
-    n_shrimp_groups = len(img_freqs.keys())
-    exp_prop = 1 / n_shrimp_groups
-    all_rm_is = []
-    for n_shrimp, img_count in img_freqs.items():
-        img_prop = img_count / img_total
-        # Drop images that occur less than a tenth of the expect proportion
-        if img_prop < exp_prop * 1/10:
-            rm_is = meta_df[meta_df['NShrimp'] == n_shrimp].index
             all_rm_is.extend(rm_is)
     return meta_df.drop(index=all_rm_is)
 
@@ -273,10 +305,38 @@ def isolate_block(model: Sequential, target_conv_id: str, target_block_id: str=N
 
 
 def true_round(value: float) -> int:
-    '''Round to the nearest whole number (>0.5 -> 1), NOT using bankers rounding
+    '''Round to the nearest whole number (>=0.5 -> 1), NOT using bankers rounding
     like python's builtin round function.
     '''
-    return value // 1 + int((value % 1) > 0.5)
+    if value - int(value) >= 0.5:
+        return int(value) + 1
+    else:
+        return int(value)
+
+
+def make_img_grid(nrows: int, ncols: int, img_arrays: np.ndarray, y_true: np.ndarray, y_pred: np.ndarray) -> Tuple[Figure, Axes]:
+    '''Create an axes showing a grid of images titled by their
+    predicted number of shrimp and true number of shrimp.
+
+    Arguments:
+    nrows -- Number of rows in the image display grid
+    ncols -- Number of columns in the image display grid
+    img_arrays -- Randomly select nrows * ncols images
+                  from this array
+    y_true -- Correct NVS for each image in img_arrays
+    y_pred -- Predicted NVS for each image in img_arrays
+    '''
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols)#, figsize=(2 * nrows, int(1.2 * ncols)))
+    n_imgs = nrows * ncols
+    img_is = np.random.choice(np.arange(n_imgs), size=n_imgs, replace=False)
+    for i in img_is:
+        if i == len(img_arrays):
+            break
+        axs[i//ncols][i%ncols].imshow(img_arrays[i])
+        axs[i//ncols][i%ncols].set_title(f'{y_pred[i]} | {y_true[i]}')
+        axs[i//ncols][i%ncols].axis('off')
+    fig.tight_layout()
+    return fig, axs
 
 
 def plt_clear() -> None:
@@ -292,12 +352,6 @@ data_dir = pathlib.Path(Settings.collection_name)
 meta_file = data_dir / 'metadata.csv'
 meta_df = pd.read_csv(meta_file, index_col='ID')
 
-# Remove NSVs with very few images
-if Settings.lim_min_prop:
-    total_imgs = len(meta_df)
-    meta_df = min_limit_freqs(meta_df)
-    print(f'Dropped {total_imgs - len(meta_df)} images which were under represented')
-    del total_imgs
 
 # Limit image frequencies to what would be expected in a uniform
 # distribution
@@ -313,6 +367,13 @@ img_arrays, img_labels = get_img_data(meta_df,
                                       Settings.rand_crop_n,
                                       Settings.rand_crop_width,
                                       Settings.rand_crop_height)
+
+
+# Remove NSVs with very few images, excluding under represented groups.
+if Settings.lim_min_prop:
+    img_arrays, img_labels = min_limit_freqs(img_arrays, img_labels)
+    print(f'\tUsing {len(img_arrays)} images')
+
 
 # Split data into training and testing sets, 80/20
 X_train, X_test, y_train, y_test = train_test_split(img_arrays, img_labels, train_size=0.80)
@@ -408,6 +469,7 @@ plt.plot(training_df['epoch'], training_df['val_mean_squared_error'])
 plt.legend(['Training', 'Testing'])
 plt.savefig(model_dir / 'mse-plot.png')
 plt_clear()
+del training_df  # Remove for memory
 
 
 # Save a histogram of the data the model was trained on
@@ -427,16 +489,38 @@ plt_clear()
 
 
 # Get the model's predictions on X_test
-y_pred = np.round(model.predict(preprocess_input(X_test))).flatten()
+y_pred = model.predict(preprocess_input(X_test)).flatten()
+# Round the model's predictions to the nearest whole number
+y_pred = np.array(list(map(true_round, y_pred)))  # Avoid bankers rounding done by numpy, pandas, and Python itself
+
 # Save a histogram of the model's predictions
 plt.hist(y_pred, bins=np.unique(y_pred))
 plt.xticks(np.unique(y_pred))
 max_height = max(Counter(y_pred).values())
 step = max(int(max_height / 3), 1)
-plt.yticks(range(0,max_height+step,step))
+plt.yticks(range(0, max_height+step, step))
 plt.xlabel('Predicted Number of Visible Shrimp')
 plt.ylabel('Frequency')
 plt.savefig(model_dir / 'pred-hist.png')
+plt_clear()
+
+
+# TODO: Create a 3x3 figure of correctly labeled images
+correct_slice = y_test == y_pred
+make_img_grid(3, 3, X_test[correct_slice], y_test[correct_slice], y_pred[correct_slice])
+plt.savefig(model_dir / 'imgs-correct.png')
+plt_clear()
+
+# TODO: Create a 3x3 figure of overpredicted labeled images
+under_slice = y_test < y_pred
+make_img_grid(3, 3, X_test[under_slice], y_test[under_slice], y_pred[under_slice])
+plt.savefig(model_dir / 'imgs-over.png')
+plt_clear()
+
+# TODO: Create a 3x3 figure of underpredicted labeled images
+over_slice = y_test > y_pred
+make_img_grid(3, 3, X_test[over_slice], y_test[over_slice], y_pred[over_slice])
+plt.savefig(model_dir / 'imgs-under.png')
 plt_clear()
 
 
@@ -479,7 +563,7 @@ for true_nvs, errs in y_err_by_true.items():
     plt.text(true_nvs-0.1, 0.2 if avg < 0 else -0.2, f'N={len(errs)}')
 plt.xlabel('Number of Visible Shrimp')
 plt.ylabel('Additional NVS Predicted')
-plt.xticks(np.unique(y_train))
+plt.xticks(np.unique(list(y_err_by_true.keys())))
 plt.yticks(err_bins)
 plt.tight_layout()
 plt.savefig(model_dir / f'avg-pred-err.png')
@@ -495,3 +579,38 @@ plt.ylabel('Predicted Number of Visible Shrimp')
 plt.xticks(list(y_pred_by_true.keys()))
 plt.savefig(model_dir / 'pred-violin.png')
 plt_clear()
+
+
+####
+# Conduct some stats test
+####
+
+stats_file = model_dir / 'stats.txt'
+
+# Good old fashioned accuracy, although this is an odd metric for a
+# regression
+with open(stats_file, 'a') as file:
+    file.write('Accuracy:\n')
+    file.write(f'{sum(y_err == 0)} / {len(y_err)} = {sum(y_err == 0) / len(y_err)}\n\n')
+
+
+# Paired t-test to determine if predicted n shrimp is statistically
+# different from true n shrimp, on average
+ttest_result = stats.ttest_rel(y_pred, y_test)
+paired_t_p = ttest_result.pvalue
+with open(stats_file, 'a') as file:
+    file.write('Paired t-test assuming equal variance:\n')
+    file.write(f'Paired t-test; pvalue = {paired_t_p:.2e}, df = {ttest_result.df}\n\n')
+
+# Regression to determine if there is a significant relationship
+# (positive or negative) between the true Number of Visible Shrimp in
+# an image and the model's prediction error. If significant, this would
+# suggest the model is specializing in identifying 4 shrimp in an image
+# and not generalizing as well.
+reg_result = stats.linregress(y_err, y_test)
+reg_p = reg_result.pvalue
+reg_m = reg_result.slope
+reg_b = reg_result.intercept
+with open(stats_file, 'a') as file:
+    file.write('Least-squares regression:\n')
+    file.write(f'Linear regression; pvalue = {reg_p:.2e}, slope = {reg_m:.2e}, intercept = {reg_b:.2e}\n\n')
