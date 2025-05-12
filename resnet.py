@@ -482,7 +482,7 @@ plt.plot(training_df['epoch'], training_df['val_mean_squared_error'])
 plt.xlabel('Epoch #')
 plt.ylabel('MSE')
 plt.xticks(range(training_df['epoch'].max() + 1))
-plt.legend(['Training', 'Testing'])
+plt.legend(['Training', 'Validation'])
 plt.savefig(model_dir / 'mse-plot.png')
 plt_clear()
 del training_df  # Remove for memory
