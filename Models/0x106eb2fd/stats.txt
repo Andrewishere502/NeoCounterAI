@@ -1,0 +1,124 @@
+Overall Dataset Descriptive Stats:
+N: 1084
+Mean 2.8
+Median 3
+STD 1.45
+SE 0.0442
+
+Prediction Statistics:
+NVS=0
+	N: 9
+	Mean: 0
+	Min: 0
+	Max: 0
+	Median: 0
+	STD: 0
+	SE: 0
+NVS=1
+	N: 38
+	Mean: 1.24
+	Min: 0
+	Max: 3
+	Median: 1
+	STD: 0.666
+	SE: 0.11
+NVS=2
+	N: 51
+	Mean: 2.04
+	Min: 0
+	Max: 3
+	Median: 2
+	STD: 0.74
+	SE: 0.105
+NVS=3
+	N: 46
+	Mean: 3.09
+	Min: 2
+	Max: 4
+	Median: 3
+	STD: 0.686
+	SE: 0.102
+NVS=4
+	N: 42
+	Mean: 4.1
+	Min: 3
+	Max: 6
+	Median: 4
+	STD: 0.84
+	SE: 0.131
+NVS=5
+	N: 18
+	Mean: 4.72
+	Min: 4
+	Max: 6
+	Median: 5
+	STD: 0.731
+	SE: 0.177
+NVS=6
+	N: 13
+	Mean: 5.54
+	Min: 5
+	Max: 7
+	Median: 5
+	STD: 0.634
+	SE: 0.183
+
+Prediction Error Statistics
+NVS=0
+	N: 9
+	Mean: 0
+	Median: 0
+	STD: 0
+	SE: 0
+NVS=1
+	N: 38
+	Mean: 0.237
+	Median: 0
+	STD: 0.666
+	SE: 0.11
+NVS=2
+	N: 51
+	Mean: 0.0392
+	Median: 0
+	STD: 0.74
+	SE: 0.105
+NVS=3
+	N: 46
+	Mean: 0.087
+	Median: 0
+	STD: 0.686
+	SE: 0.102
+NVS=4
+	N: 42
+	Mean: 0.0952
+	Median: 0
+	STD: 0.84
+	SE: 0.131
+NVS=5
+	N: 18
+	Mean: -0.278
+	Median: 0
+	STD: 0.731
+	SE: 0.177
+NVS=6
+	N: 13
+	Mean: -0.462
+	Median: -1
+	STD: 0.634
+	SE: 0.183
+
+Shapiro test; statistic = 0.948, p-value = 4.16e-19
+Normally distributed: False
+
+Accuracy:
+114 / 217 = 0.5253456221198156
+
+Paired t-test assuming equal variance:
+Paired t-test; pvalue = 0.463, df = 216
+
+ANOVA:
+ANOVA; statistic = 2.15, pvalue = 0.0495
+
+Least-squares regression:
+Linear regression; pvalue = 0.0101, slope = -0.0838, intercept = 0.274
+
