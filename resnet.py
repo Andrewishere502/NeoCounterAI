@@ -479,6 +479,9 @@ save_settings(model_dir / 'settings.txt',
 training_df = pd.read_csv(model_dir / 'training.log')
 plt.plot(training_df['epoch'], training_df['mean_squared_error'])
 plt.plot(training_df['epoch'], training_df['val_mean_squared_error'])
+plt.xlabel('Epoch #')
+plt.ylabel('MSE')
+plt.xticks(range(training_df['epoch'].max() + 1))
 plt.legend(['Training', 'Testing'])
 plt.savefig(model_dir / 'mse-plot.png')
 plt_clear()
@@ -547,7 +550,7 @@ plt.xticks(err_bins)
 max_height = max(Counter(y_err).values())
 step = max(int(max_height / 3), 1)
 plt.yticks(range(0,max_height+step,step))
-plt.xlabel('Predicted Number of Visible Shrimp')
+plt.xlabel('Additional Number of Visible Shrimp Predicted')
 plt.ylabel('Frequency')
 plt.savefig(model_dir / 'pred-err-hist.png')
 plt_clear()
@@ -609,9 +612,10 @@ with open(stats_file, 'a') as file:
     file.write(f'STD {np.std(img_labels)}\n')
     file.write(f'SE {stats.sem(img_labels)}\n')
 
+    # Conduct shapiro-wilk's test
     shap_results = stats.shapiro(img_labels)
     file.write(f'Shapiro test; statistic = {shap_results.statistic}, p-value = {shap_results.pvalue}\n')
-    file.write(f'Normally distributed: {shap_results.pvalue >= 0.05}')
+    file.write(f'Normally distributed: {shap_results.pvalue >= 0.05}\n\n')
 
     # Good old fashioned accuracy, although this is an odd metric for a
     # regression
@@ -625,13 +629,19 @@ with open(stats_file, 'a') as file:
     file.write('Paired t-test assuming equal variance:\n')
     file.write(f'Paired t-test; pvalue = {paired_t_p:.2e}, df = {ttest_result.df}\n\n')
 
+    # ANOVA to see if any image labels are predicted differently than
+    # others, on average
+    anova_result = stats.f_oneway(*y_err_by_true.values())
+    anova_stat = anova_result.statistic
+    anova_p = anova_result.pvalue
+    file.write(f'ANOVA; statistic = {anova_stat:.2e}, pvalue = {anova_p:.2e}\n\n')
 
     # Regression to determine if there is a significant relationship
-    # (positive or negative) between the true Number of Visible Shrimp in
-    # an image and the model's prediction error. If significant, this would
-    # suggest the model is specializing in identifying 4 shrimp in an image
-    # and not generalizing as well.
-    reg_result = stats.linregress(y_err, y_test)
+    # (positive or negative) between the true NVS in an image and the
+    # model's prediction error. If significant, this would suggest the
+    # model is specializing in identifying some NVS and not generalizing
+    # as well.
+    reg_result = stats.linregress(y_test, y_err)
     reg_p = reg_result.pvalue
     reg_m = reg_result.slope
     reg_b = reg_result.intercept
