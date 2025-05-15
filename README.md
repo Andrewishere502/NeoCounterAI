@@ -3,6 +3,8 @@ This is a research project dedicated to developing a convolutional neural networ
 
 
 # Requirements/Dependencies
+0. Make sure you have python 3.9.6 installed and aliased to `python3`
+
 1. Before you do anything, make sure to create a proper virtual environment! This will be a place you can put all the packages you need to make your own model. Navigate to your project directory and run the following line to build the virtual environment, named `.venv`:
 
 `python3 -m venv .venv`
